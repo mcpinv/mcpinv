@@ -1,0 +1,5 @@
+{
+  "name": "mcpinv",
+  "private": true,
+  "workspaces": ["packages/*"]
+}
