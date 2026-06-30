@@ -96,6 +96,13 @@ export async function listInstalled(): Promise<string[]> {
   return Object.keys(config.mcpServers ?? {})
 }
 
+export async function getServerConfig(serverId: string): Promise<{ command: string; args: string[] } | null> {
+  const config = await readJson(claudeConfigPath())
+  const entry: ServerEntry | undefined = config?.mcpServers?.[serverId]
+  if (!entry) return null
+  return { command: entry.command ?? 'npx', args: entry.args ?? [] }
+}
+
 export async function hasPlaintextSecrets(): Promise<PlaintextSecret[]> {
   const config = await readJson(claudeConfigPath())
   const found: PlaintextSecret[] = []
