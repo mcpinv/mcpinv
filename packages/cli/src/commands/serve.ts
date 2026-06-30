@@ -15,7 +15,7 @@ export function serveCommand(): Command {
     .option('--host <host>', 'Bind host', 'localhost')
     .option('--no-watch', 'Disable hot-swap on config changes')
     .option('--no-telemetry', 'Disable error DB and AI diagnosis')
-    .action(async (serverId: string, opts: { port: number; host: string; watch: boolean }) => {
+    .action(async (serverId: string, opts: { port: number; host: string; watch: boolean; telemetry: boolean }) => {
       const serverConfig = await getServerConfig(serverId)
       if (!serverConfig) {
         console.error(chalk.red(`Server "${serverId}" not found. Run: mcpinv install ${serverId}`))
@@ -38,10 +38,24 @@ export function serveCommand(): Command {
       const logPath = join(logDir, `bridge-${serverId}.log`)
 
       const client = new McpClient({ command: serverConfig.command, args: serverConfig.args, env })
-      await client.connect()
+      try {
+        await client.connect()
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        console.error(chalk.red(`Failed to start MCP server "${serverId}": ${message}`))
+        console.error(chalk.dim(`  Try: mcpinv diagnose ${serverId}`))
+        process.exit(1)
+      }
 
       const server = new BridgeServer(client, { serverId, port: opts.port, host: opts.host, logPath })
-      await server.start()
+      try {
+        await server.start()
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        console.error(chalk.red(`Failed to start bridge server: ${message}`))
+        await client.close()
+        process.exit(1)
+      }
 
       const tools = await client.listTools()
       console.log(chalk.green(`✓ MCP server started (${serverId})`))
@@ -71,6 +85,7 @@ export function serveCommand(): Command {
 
       process.on('SIGINT', shutdown)
       process.on('SIGTERM', shutdown)
+      // Keep the process alive while waiting for signals (Node exits when event loop is empty)
       setTimeout(() => {}, 2 ** 31 - 1)
     })
 }
