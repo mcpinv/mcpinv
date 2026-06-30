@@ -18,6 +18,7 @@ export class BridgeServer {
   ) {}
 
   async start(): Promise<void> {
+    if (this.started) return
     this.tools = await this.client.listTools()
     this.spec = generateOpenApiSpec(this.options.serverId, this.tools)
     this.registerRoutes()
@@ -51,11 +52,12 @@ export class BridgeServer {
           const result = await this.client.callTool(request.params.name, request.body ?? {})
           this.log(`[tool] ${request.params.name} ok`)
           return result
-        } catch (err: any) {
-          this.log(`[tool] ${request.params.name} error: ${err.message}`)
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          this.log(`[tool] ${request.params.name} error: ${message}`)
           return reply.code(422).send({
             error: 'tool_failed',
-            message: err.message ?? 'Tool execution failed',
+            message,
             tool: request.params.name
           })
         }
@@ -68,7 +70,9 @@ export class BridgeServer {
     try {
       mkdirSync(dirname(this.options.logPath), { recursive: true })
       appendFileSync(this.options.logPath, entry + '\n')
-    } catch {}
+    } catch (err) {
+      console.error(`[BridgeServer] Failed to write log: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 
   async stop(): Promise<void> {
