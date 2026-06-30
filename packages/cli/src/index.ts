@@ -11,6 +11,7 @@ import { statusCommand } from './commands/status.js'
 import { logsCommand } from './commands/logs.js'
 import { updateCommand } from './commands/update.js'
 import { migrateCommand } from './commands/migrate.js'
+import { serveCommand } from './commands/serve.js'
 
 program
   .name('mcpinv')
@@ -24,5 +25,6 @@ program.addCommand(statusCommand())
 program.addCommand(logsCommand())
 program.addCommand(updateCommand())
 program.addCommand(migrateCommand())
+program.addCommand(serveCommand())
 
 program.parse()
