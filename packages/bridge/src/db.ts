@@ -44,18 +44,20 @@ export function openDb(path = DEFAULT_DB_PATH): Database.Database {
   return db
 }
 
-let _insertStmt: Database.Statement | null = null
+const _stmtCache = new WeakMap<Database.Database, Database.Statement>()
 
 function getInsertStmt(db: Database.Database): Database.Statement {
-  if (!_insertStmt) {
-    _insertStmt = db.prepare(`
+  let stmt = _stmtCache.get(db)
+  if (!stmt) {
+    stmt = db.prepare(`
       INSERT INTO tool_calls
         (ts, server_id, tool_name, args_hash, duration_ms, input_tokens, output_tokens, success, error_msg)
       VALUES
         (@ts, @server_id, @tool_name, @args_hash, @duration_ms, @input_tokens, @output_tokens, @success, @error_msg)
     `)
+    _stmtCache.set(db, stmt)
   }
-  return _insertStmt
+  return stmt
 }
 
 export function insertToolCall(db: Database.Database, row: Omit<ToolCallRow, 'id'>): number {

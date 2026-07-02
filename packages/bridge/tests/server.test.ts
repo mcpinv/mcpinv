@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { Tool } from '@modelcontextprotocol/sdk/types.js'
 import { BridgeServer } from '../src/server.js'
 import type { McpClient } from '../src/mcp-client.js'
+import { openDb } from '../src/db.js'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -24,7 +25,7 @@ describe('BridgeServer', () => {
   const opts = { serverId: 'test', port: 3099, host: '127.0.0.1', logPath: join(tmpdir(), 'bridge-test.log') }
 
   beforeEach(() => {
-    server = new BridgeServer(mockClient(), opts)
+    server = new BridgeServer(mockClient(), opts, openDb(':memory:'))
   })
 
   afterEach(async () => {
@@ -48,7 +49,7 @@ describe('BridgeServer', () => {
 
   it('calls a tool via POST /tools/:name', async () => {
     const client = mockClient()
-    server = new BridgeServer(client, opts)
+    server = new BridgeServer(client, opts, openDb(':memory:'))
     await server.start()
     const res = await fetch('http://127.0.0.1:3099/tools/ping', {
       method: 'POST',
@@ -72,7 +73,7 @@ describe('BridgeServer', () => {
     const client = mockClient({
       callTool: vi.fn().mockRejectedValue(new Error('upstream error'))
     } as any)
-    server = new BridgeServer(client, opts)
+    server = new BridgeServer(client, opts, openDb(':memory:'))
     await server.start()
     const res = await fetch('http://127.0.0.1:3099/tools/ping', {
       method: 'POST',
