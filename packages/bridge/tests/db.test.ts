@@ -1,10 +1,11 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { openDb, insertToolCall } from '../src/db.js'
+import { openDb, insertToolCall, ToolCallRow } from '../src/db.js'
 import { unlinkSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { randomUUID } from 'crypto'
 
-const TEST_DB = join(tmpdir(), 'mcpinv-test.db')
+const TEST_DB = join(tmpdir(), `mcpinv-test-${randomUUID()}.db`)
 
 afterEach(() => { if (existsSync(TEST_DB)) unlinkSync(TEST_DB) })
 
@@ -12,7 +13,7 @@ describe('openDb', () => {
   it('creates schema on first open', () => {
     const db = openDb(TEST_DB)
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all()
-    const names = (tables as any[]).map(t => t.name)
+    const names = (tables as { name: string }[]).map(t => t.name)
     expect(names).toContain('tool_calls')
     expect(names).toContain('schema_version')
     db.close()
@@ -39,9 +40,10 @@ describe('insertToolCall', () => {
       error_msg: null
     })
     expect(id).toBeGreaterThan(0)
-    const row = db.prepare('SELECT * FROM tool_calls WHERE id = ?').get(id) as any
+    const row = db.prepare('SELECT * FROM tool_calls WHERE id = ?').get(id) as ToolCallRow
     expect(row.tool_name).toBe('read_file')
     expect(row.success).toBe(1)
+    expect(row.id).toBe(id)
     db.close()
   })
 })

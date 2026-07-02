@@ -9,7 +9,7 @@ export interface ToolCallRow {
   server_id: string
   tool_name: string
   args_hash: string
-  duration_ms: number
+  duration_ms: number | null
   input_tokens: number | null
   output_tokens: number | null
   success: number
@@ -38,21 +38,27 @@ export function openDb(path = DEFAULT_DB_PATH): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_tc_ts     ON tool_calls(ts);
     CREATE INDEX IF NOT EXISTS idx_tc_server ON tool_calls(server_id);
     CREATE INDEX IF NOT EXISTS idx_tc_tool   ON tool_calls(tool_name);
-    CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
-    INSERT INTO schema_version SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM schema_version);
+    CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL PRIMARY KEY);
+    INSERT OR IGNORE INTO schema_version VALUES (1);
   `)
   return db
 }
 
-export function insertToolCall(
-  db: Database.Database,
-  row: Omit<ToolCallRow, 'id'>
-): number {
-  const stmt = db.prepare(`
-    INSERT INTO tool_calls
-      (ts, server_id, tool_name, args_hash, duration_ms, input_tokens, output_tokens, success, error_msg)
-    VALUES
-      (@ts, @server_id, @tool_name, @args_hash, @duration_ms, @input_tokens, @output_tokens, @success, @error_msg)
-  `)
-  return Number((stmt.run(row)).lastInsertRowid)
+let _insertStmt: Database.Statement | null = null
+
+function getInsertStmt(db: Database.Database): Database.Statement {
+  if (!_insertStmt) {
+    _insertStmt = db.prepare(`
+      INSERT INTO tool_calls
+        (ts, server_id, tool_name, args_hash, duration_ms, input_tokens, output_tokens, success, error_msg)
+      VALUES
+        (@ts, @server_id, @tool_name, @args_hash, @duration_ms, @input_tokens, @output_tokens, @success, @error_msg)
+    `)
+  }
+  return _insertStmt
+}
+
+export function insertToolCall(db: Database.Database, row: Omit<ToolCallRow, 'id'>): number {
+  // Safe for any realistic row count; BigInt precision lost above 2^53 rows
+  return Number(getInsertStmt(db).run(row).lastInsertRowid)
 }
