@@ -9,6 +9,7 @@ import { generateOpenApiSpec } from './openapi.js'
 import type { BridgeServerOptions } from './types.js'
 import { openDb, insertToolCall } from './db.js'
 import { EventBus } from './event-bus.js'
+import { registerApiRoutes } from './api-routes.js'
 
 export class BridgeServer {
   private fastify = Fastify({ logger: false })
@@ -33,6 +34,17 @@ export class BridgeServer {
     if (this.started) return
     this.tools = await this.client.listTools()
     this.spec = generateOpenApiSpec(this.options.serverId, this.tools)
+    // serve compiled UI static files (absent during development — UI runs on Vite :5173)
+    try {
+      const { default: fastifyStatic } = await import('@fastify/static')
+      const { join: pathJoin, dirname: pathDirname } = await import('path')
+      const { fileURLToPath } = await import('url')
+      const __dir = pathDirname(fileURLToPath(import.meta.url))
+      await this.fastify.register(fastifyStatic, { root: pathJoin(__dir, 'public'), prefix: '/' })
+    } catch {
+      // public dir absent during development
+    }
+    await registerApiRoutes(this.fastify, this.db, this.eventBus, this.options.serverId)
     this.registerRoutes()
     await this.fastify.listen({ port: this.options.port, host: this.options.host })
     this.started = true
