@@ -4,19 +4,22 @@ import { existsSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
+import * as http from 'http'
 import { openDb, insertToolCall } from '../src/db.js'
 import { EventBus } from '../src/event-bus.js'
 import { registerApiRoutes } from '../src/api-routes.js'
 
-const TEST_DB = join(tmpdir(), `mcpinv-api-test-${randomUUID()}.db`)
 const openDbs: ReturnType<typeof openDb>[] = []
+const tempDbs: string[] = []
 afterAll(() => {
   for (const db of openDbs) { try { db.close() } catch { /* ignore */ } }
-  if (existsSync(TEST_DB)) unlinkSync(TEST_DB)
+  for (const p of tempDbs) { if (existsSync(p)) unlinkSync(p) }
 })
 
 async function buildApp() {
-  const db = openDb(TEST_DB)
+  const dbPath = join(tmpdir(), `mcpinv-api-test-${randomUUID()}.db`)
+  tempDbs.push(dbPath)
+  const db = openDb(dbPath)
   openDbs.push(db)
   const bus = new EventBus()
   const app = Fastify()
@@ -86,5 +89,50 @@ describe('GET /api/tokens/daily', () => {
     const r = await app.inject({ method: 'GET', url: '/api/tokens/daily?days=7' })
     expect(r.statusCode).toBe(200)
     expect(Array.isArray(JSON.parse(r.body))).toBe(true)
+  })
+})
+
+describe('GET /api/calls (filter tests)', () => {
+  it('filters by status=ok', async () => {
+    const { app, db } = await buildApp()
+    insertToolCall(db, { ts: Date.now(), server_id: 'test-server', tool_name: 'ok_tool',
+      args_hash: 'c', duration_ms: 1, input_tokens: null, output_tokens: null, success: 1, error_msg: null })
+    insertToolCall(db, { ts: Date.now(), server_id: 'test-server', tool_name: 'fail_tool',
+      args_hash: 'd', duration_ms: 1, input_tokens: null, output_tokens: null, success: 0, error_msg: 'boom' })
+    const r = await app.inject({ method: 'GET', url: '/api/calls?status=ok' })
+    const body = JSON.parse(r.body) as Array<{ tool_name: string }>
+    expect(body.every(c => c.tool_name === 'ok_tool')).toBe(true)
+  })
+
+  it('filters by server', async () => {
+    const { app, db } = await buildApp()
+    insertToolCall(db, { ts: Date.now(), server_id: 'server-a', tool_name: 'tool_a',
+      args_hash: 'e', duration_ms: 1, input_tokens: null, output_tokens: null, success: 1, error_msg: null })
+    insertToolCall(db, { ts: Date.now(), server_id: 'server-b', tool_name: 'tool_b',
+      args_hash: 'f', duration_ms: 1, input_tokens: null, output_tokens: null, success: 1, error_msg: null })
+    const r = await app.inject({ method: 'GET', url: '/api/calls?server=server-a' })
+    const body = JSON.parse(r.body) as Array<{ server_id: string }>
+    expect(body.every(c => c.server_id === 'server-a')).toBe(true)
+  })
+})
+
+describe('GET /api/events', () => {
+  it('responds with text/event-stream content type', async () => {
+    const { app } = await buildApp()
+    await app.listen({ port: 0, host: '127.0.0.1' })
+    const addr = app.server.address() as { port: number }
+    try {
+      const contentType = await new Promise<string>((resolve, reject) => {
+        const req = http.get(`http://127.0.0.1:${addr.port}/api/events`, (res) => {
+          resolve(res.headers['content-type'] ?? '')
+          res.destroy()
+          req.destroy()
+        })
+        req.on('error', reject)
+      })
+      expect(contentType).toContain('text/event-stream')
+    } finally {
+      await app.close()
+    }
   })
 })
