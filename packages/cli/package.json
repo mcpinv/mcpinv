@@ -19,6 +19,7 @@
     "commander": "^12.1.0",
     "inquirer": "^10.1.8",
     "keytar": "^7.9.0",
+    "open": "^11.0.0",
     "ora": "^8.0.1"
   },
   "devDependencies": {
