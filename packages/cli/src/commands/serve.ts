@@ -1,5 +1,6 @@
 import { Command } from 'commander'
 import chalk from 'chalk'
+import open from 'open'
 import { homedir } from 'os'
 import { join } from 'path'
 import { mkdirSync } from 'fs'
@@ -63,6 +64,11 @@ export function serveCommand(): Command {
       console.log(chalk.green(`✓ Bridge running on http://${opts.host}:${opts.port}`))
       console.log(`  OpenAPI spec:  http://${opts.host}:${opts.port}/openapi.json`)
       console.log(`  Tool list:     http://${opts.host}:${opts.port}/tools`)
+      const cockpitUrl = `http://${opts.host === '0.0.0.0' ? 'localhost' : opts.host}:${opts.port}`
+      console.log(chalk.dim(`  Cockpit UI:    ${cockpitUrl}`))
+      open(cockpitUrl).catch(() => {
+        // non-fatal — headless environments have no browser
+      })
 
       if (opts.watch) {
         const configPaths = await detectClients()
