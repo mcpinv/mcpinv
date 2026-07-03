@@ -85,7 +85,13 @@ export async function registerApiRoutes(
       reply.raw.write(`data: ${JSON.stringify(event)}\n\n`)
     }
     eventBus.on_event(listener)
-    req.raw.on('close', () => eventBus.off_event(listener))
+
+    // Keepalive heartbeat — prevents proxies/browsers from closing idle SSE streams
+    const heartbeat = setInterval(() => reply.raw.write(':\n\n'), 15_000)
+    req.raw.on('close', () => {
+      clearInterval(heartbeat)
+      eventBus.off_event(listener)
+    })
 
     return reply
   })
