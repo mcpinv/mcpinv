@@ -15,6 +15,7 @@ export class BridgeServer {
   private tools: Tool[] = []
   private spec: object = {}
   private started = false
+  private logDirReady = false
   private db: Database.Database
   readonly eventBus: EventBus
 
@@ -60,15 +61,18 @@ export class BridgeServer {
         if (!tool) {
           return reply.code(404).send({ error: 'tool_not_found', tool: request.params.name })
         }
+        const argsJson = JSON.stringify(request.body ?? {})
+        const argsHash = createHash('sha256').update(argsJson).digest('hex').slice(0, 16)
         const start = Date.now()
         try {
           const result = await this.client.callTool(request.params.name, request.body ?? {})
           const duration_ms = Date.now() - start
+          const ts = Date.now()
           const id = insertToolCall(this.db, {
-            ts: Date.now(),
+            ts,
             server_id: this.options.serverId,
             tool_name: request.params.name,
-            args_hash: createHash('sha256').update(JSON.stringify(request.body ?? {})).digest('hex').slice(0, 16),
+            args_hash: argsHash,
             duration_ms,
             input_tokens: null,
             output_tokens: null,
@@ -76,7 +80,7 @@ export class BridgeServer {
             error_msg: null
           })
           this.eventBus.emit_event({ type: 'tool_call', data: {
-            id, ts: Date.now(), server_id: this.options.serverId,
+            id, ts, server_id: this.options.serverId,
             tool_name: request.params.name, duration_ms,
             input_tokens: null, output_tokens: null,
             success: true, error_msg: null
@@ -85,18 +89,30 @@ export class BridgeServer {
           return result
         } catch (err) {
           const duration_ms = Date.now() - start
+          const ts = Date.now()
           const message = err instanceof Error ? err.message : String(err)
-          insertToolCall(this.db, {
-            ts: Date.now(),
+          const id = insertToolCall(this.db, {
+            ts,
             server_id: this.options.serverId,
             tool_name: request.params.name,
-            args_hash: createHash('sha256').update(JSON.stringify(request.body ?? {})).digest('hex').slice(0, 16),
+            args_hash: argsHash,
             duration_ms,
             input_tokens: null,
             output_tokens: null,
             success: 0,
             error_msg: message.slice(0, 500)
           })
+          this.eventBus.emit_event({ type: 'tool_call', data: {
+            id,
+            ts,
+            server_id: this.options.serverId,
+            tool_name: request.params.name,
+            duration_ms,
+            input_tokens: null,
+            output_tokens: null,
+            success: false,
+            error_msg: message.slice(0, 500)
+          }})
           this.log(`[tool] ${request.params.name} error: ${message}`)
           return reply.code(422).send({ error: 'tool_failed', message, tool: request.params.name })
         }
@@ -107,7 +123,10 @@ export class BridgeServer {
   private log(message: string): void {
     const entry = JSON.stringify({ ts: new Date().toISOString(), msg: message })
     try {
-      mkdirSync(dirname(this.options.logPath), { recursive: true })
+      if (!this.logDirReady) {
+        mkdirSync(dirname(this.options.logPath), { recursive: true })
+        this.logDirReady = true
+      }
       appendFileSync(this.options.logPath, entry + '\n')
     } catch (err) {
       console.error(`[BridgeServer] Failed to write log: ${err instanceof Error ? err.message : String(err)}`)
