@@ -1,5 +1,8 @@
 {
   "name": "mcpinv",
   "private": true,
-  "workspaces": ["packages/*"]
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "build:ui": "npm run build -w packages/ui && npm run build -w packages/bridge"
+  }
 }
