@@ -1,9 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { vol } from 'memfs'
-import { detectClients, addServer, removeServer, listInstalled, hasPlaintextSecrets } from '../../src/services/config-manager.js'
+import { detectClients, addServer, removeServer, listInstalled, hasPlaintextSecrets, windowsAppDataPath } from '../../src/services/config-manager.js'
 
 vi.mock('fs/promises', () => import('memfs').then(m => m.fs.promises))
 vi.mock('os', () => ({ default: { homedir: () => '/home/test', platform: () => 'linux' } }))
+
+describe('windowsAppDataPath', () => {
+  it('returns APPDATA when set', () => {
+    expect(windowsAppDataPath('C:\\Users\\Test\\AppData\\Roaming', 'C:\\Users\\Test'))
+      .toBe('C:\\Users\\Test\\AppData\\Roaming')
+  })
+
+  it('falls back to homedir/AppData/Roaming when APPDATA is not set', () => {
+    expect(windowsAppDataPath(undefined, 'C:\\Users\\Test'))
+      .toBe('C:\\Users\\Test\\AppData\\Roaming')
+  })
+})
 
 describe('config-manager', () => {
   beforeEach(() => vol.reset())
