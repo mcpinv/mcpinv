@@ -13,6 +13,7 @@ import { updateCommand } from './commands/update.js'
 import { migrateCommand } from './commands/migrate.js'
 import { serveCommand } from './commands/serve.js'
 import { diagnoseCommand } from './commands/diagnose.js'
+import { importCommand } from './commands/import.js'
 
 program
   .name('mcpinv')
@@ -28,5 +29,6 @@ program.addCommand(updateCommand())
 program.addCommand(migrateCommand())
 program.addCommand(serveCommand())
 program.addCommand(diagnoseCommand())
+program.addCommand(importCommand())
 
 program.parse()
