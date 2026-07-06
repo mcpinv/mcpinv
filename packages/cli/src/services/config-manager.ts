@@ -15,11 +15,15 @@ export interface PlaintextSecret {
   value: string
 }
 
+export function windowsAppDataPath(appData: string | undefined, home: string): string {
+  return appData ?? path.join(home, 'AppData', 'Roaming')
+}
+
 function claudeConfigPath(): string {
   const home = os.homedir()
   const platform = os.platform()
   if (platform === 'win32') {
-    return path.join(process.env.APPDATA ?? home, 'Claude', 'claude_desktop_config.json')
+    return path.join(windowsAppDataPath(process.env.APPDATA, home), 'Claude', 'claude_desktop_config.json')
   }
   if (platform === 'darwin') {
     return path.join(home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json')
