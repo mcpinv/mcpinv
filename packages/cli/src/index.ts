@@ -14,6 +14,7 @@ import { migrateCommand } from './commands/migrate.js'
 import { serveCommand } from './commands/serve.js'
 import { diagnoseCommand } from './commands/diagnose.js'
 import { importCommand } from './commands/import.js'
+import { cockpitCommand } from './commands/cockpit.js'
 
 program
   .name('mcpinv')
@@ -30,5 +31,6 @@ program.addCommand(migrateCommand())
 program.addCommand(serveCommand())
 program.addCommand(diagnoseCommand())
 program.addCommand(importCommand())
+program.addCommand(cockpitCommand())
 
 program.parse()
