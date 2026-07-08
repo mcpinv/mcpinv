@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { openDb, insertToolCall, ToolCallRow } from '../src/db.js'
+import { openDb, insertToolCall, upsertKnownServer, listKnownServers, ToolCallRow } from '../src/db.js'
 import { unlinkSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -44,6 +44,37 @@ describe('insertToolCall', () => {
     expect(row.tool_name).toBe('read_file')
     expect(row.success).toBe(1)
     expect(row.id).toBe(id)
+    db.close()
+  })
+})
+
+describe('upsertKnownServer', () => {
+  it('upsertKnownServer inserts a new server', () => {
+    const db = openDb(join(tmpdir(), `mcpinv-test-${randomUUID()}.db`))
+    upsertKnownServer(db, 'mira-local')
+    const rows = listKnownServers(db)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].id).toBe('mira-local')
+    expect(rows[0].registered_at).toBeGreaterThan(0)
+    expect(rows[0].last_seen_at).toBeNull()
+    db.close()
+  })
+
+  it('upsertKnownServer is idempotent', () => {
+    const db = openDb(join(tmpdir(), `mcpinv-test-${randomUUID()}.db`))
+    upsertKnownServer(db, 'mira-local')
+    upsertKnownServer(db, 'mira-local')
+    expect(listKnownServers(db)).toHaveLength(1)
+    db.close()
+  })
+
+  it('listKnownServers returns all registered servers', () => {
+    const db = openDb(join(tmpdir(), `mcpinv-test-${randomUUID()}.db`))
+    upsertKnownServer(db, 'mira-local')
+    upsertKnownServer(db, 'mira-memory')
+    const ids = listKnownServers(db).map(r => r.id)
+    expect(ids).toContain('mira-local')
+    expect(ids).toContain('mira-memory')
     db.close()
   })
 })
