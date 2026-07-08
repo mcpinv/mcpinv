@@ -26,6 +26,12 @@ export interface ErrorPattern {
   suggestion: string
 }
 
+export interface CockpitServerOptions {
+  port: number
+  host: string
+  dbPath?: string
+}
+
 export interface ErrorGuide {
   error_sig: string
   server_type: string
