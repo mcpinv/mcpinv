@@ -5,9 +5,10 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 import * as http from 'http'
-import { openDb, insertToolCall } from '../src/db.js'
+import { openDb, insertToolCall, upsertKnownServer } from '../src/db.js'
 import { EventBus } from '../src/event-bus.js'
 import { registerApiRoutes } from '../src/api-routes.js'
+import { ActiveRegistry } from '../src/registry.js'
 
 const openDbs: ReturnType<typeof openDb>[] = []
 const tempDbs: string[] = []
@@ -134,5 +135,69 @@ describe('GET /api/events', () => {
     } finally {
       await app.close()
     }
+  })
+})
+
+describe('CockpitServer API (registry mode)', () => {
+  const paths: string[] = []
+
+  async function buildCockpitApp(registry = new ActiveRegistry()) {
+    const p = join(tmpdir(), `mcpinv-test-${randomUUID()}.db`)
+    paths.push(p)
+    const db = openDb(p)
+    openDbs.push(db)
+    const bus = new EventBus()
+    const a = Fastify()
+    await registerApiRoutes(a, db, bus, registry)
+    await a.ready()
+    return { app: a, db, bus, registry }
+  }
+
+  afterAll(() => paths.forEach(p => { try { unlinkSync(p) } catch { /* ignore */ } }))
+
+  it('GET /api/servers returns known servers as stopped when registry is empty', async () => {
+    const { app, db } = await buildCockpitApp()
+    upsertKnownServer(db, 'mira-local')
+    const res = await app.inject({ method: 'GET', url: '/api/servers' })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body).toHaveLength(1)
+    expect(body[0].id).toBe('mira-local')
+    expect(body[0].status).toBe('stopped')
+    await app.close()
+  })
+
+  it('GET /api/servers shows running when server is in registry', async () => {
+    const registry = new ActiveRegistry()
+    registry.register('mira-local', 3001)
+    const { app, db } = await buildCockpitApp(registry)
+    upsertKnownServer(db, 'mira-local')
+    const res = await app.inject({ method: 'GET', url: '/api/servers' })
+    const body = JSON.parse(res.body)
+    expect(body[0].status).toBe('running')
+    await app.close()
+  })
+
+  it('POST /api/register adds server to registry', async () => {
+    const registry = new ActiveRegistry()
+    const { app } = await buildCockpitApp(registry)
+    const res = await app.inject({
+      method: 'POST', url: '/api/register',
+      headers: { 'content-type': 'application/json' },
+      payload: { server_id: 'mira-local', port: 3001 }
+    })
+    expect(res.statusCode).toBe(200)
+    expect(registry.get('mira-local')?.port).toBe(3001)
+    await app.close()
+  })
+
+  it('DELETE /api/register/:id removes server from registry', async () => {
+    const registry = new ActiveRegistry()
+    registry.register('mira-local', 3001)
+    const { app } = await buildCockpitApp(registry)
+    const res = await app.inject({ method: 'DELETE', url: '/api/register/mira-local' })
+    expect(res.statusCode).toBe(200)
+    expect(registry.get('mira-local')).toBeUndefined()
+    await app.close()
   })
 })

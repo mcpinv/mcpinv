@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify'
 import type Database from 'better-sqlite3'
 import type { EventBus, CockpitEvent } from './event-bus.js'
+import { listKnownServers } from './db.js'
+import { ActiveRegistry } from './registry.js'
 
 const startTime = Date.now()
 
@@ -8,16 +10,39 @@ export async function registerApiRoutes(
   fastify: FastifyInstance,
   db: Database.Database,
   eventBus: EventBus,
-  serverId: string
+  registryOrServerId: ActiveRegistry | string
 ): Promise<void> {
+  const isRegistry = registryOrServerId instanceof ActiveRegistry
+  const legacyServerId = isRegistry ? null : registryOrServerId
+  const registry = isRegistry ? registryOrServerId : null
 
-  fastify.get('/api/servers', async () => [{
-    id: serverId,
-    status: 'running',
-    uptime_ms: Date.now() - startTime,
-    restart_count: 0,
-    last_error: null
-  }])
+  fastify.get('/api/servers', async () => {
+    if (registry) {
+      const known = listKnownServers(db)
+      const activeMap = new Map(registry.getAll().map(e => [e.server_id, e]))
+      return known.map(k => {
+        const entry = activeMap.get(k.id)
+        return entry
+          ? { id: k.id, status: 'running', uptime_ms: Date.now() - entry.started_at, restart_count: 0, last_error: null }
+          : { id: k.id, status: 'stopped', uptime_ms: null, restart_count: 0, last_error: null }
+      })
+    }
+    return [{ id: legacyServerId, status: 'running', uptime_ms: Date.now() - startTime, restart_count: 0, last_error: null }]
+  })
+
+  if (registry) {
+    fastify.post<{ Body: { server_id: string; port: number } }>('/api/register', async (req) => {
+      registry.register(req.body.server_id, req.body.port)
+      eventBus.emit_event({ type: 'server_up', data: { ts: Date.now(), server_id: req.body.server_id } })
+      return { ok: true }
+    })
+
+    fastify.delete<{ Params: { id: string } }>('/api/register/:id', async (req) => {
+      registry.unregister(req.params.id)
+      eventBus.emit_event({ type: 'server_down', data: { ts: Date.now(), server_id: req.params.id } })
+      return { ok: true }
+    })
+  }
 
   // Cache static prepared statements once per route registration
   const stmtSummary = db.prepare(`
@@ -53,7 +78,6 @@ export async function registerApiRoutes(
     if (q['status'] === 'error') { clauses.push('success = 0') }
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
     params.push(limit)
-    // WHERE clause varies by filter params — cannot cache a single statement
     return db.prepare(
       `SELECT id, ts, server_id, tool_name, args_hash, duration_ms, input_tokens, output_tokens, success, error_msg FROM tool_calls ${where} ORDER BY ts DESC LIMIT ?`
     ).all(...params)
@@ -78,7 +102,6 @@ export async function registerApiRoutes(
       'Cache-Control': 'no-cache',
       Connection:      'keep-alive'
     })
-    // Initial keepalive comment to establish the connection
     reply.raw.write(':\n\n')
 
     const listener = (event: CockpitEvent) => {
@@ -86,7 +109,6 @@ export async function registerApiRoutes(
     }
     eventBus.on_event(listener)
 
-    // Keepalive heartbeat — prevents proxies/browsers from closing idle SSE streams
     const heartbeat = setInterval(() => reply.raw.write(':\n\n'), 15_000)
     req.raw.on('close', () => {
       clearInterval(heartbeat)
