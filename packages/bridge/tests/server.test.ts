@@ -96,4 +96,39 @@ describe('BridgeServer', () => {
     const json = await res.json() as any
     expect(json.paths['/tools/create_issue']).toBeDefined()
   })
+
+  it('registers with cockpit on start and unregisters on stop', async () => {
+    const registered: unknown[] = []
+    const unregistered: string[] = []
+
+    // Minimal stub cockpit using Fastify
+    const Fastify2 = (await import('fastify')).default
+    const stub = Fastify2({ logger: false })
+    stub.post('/api/register', async (req: any) => { registered.push(req.body); return { ok: true } })
+    stub.delete('/api/register/:id', async (req: any) => { unregistered.push((req.params as any).id); return { ok: true } })
+    await stub.listen({ port: 0, host: '127.0.0.1' })
+    const stubAddr = stub.server.address() as any
+    const stubPort: number = stubAddr.port
+
+    const dbPath = join(tmpdir(), `mcpinv-server-test-${Math.random()}.db`)
+    const db = openDb(dbPath)
+    const s = new BridgeServer(
+      mockClient(),
+      { serverId: 'test-server', port: 0, host: '127.0.0.1', logPath: join(tmpdir(), 'test.log'), cockpitUrl: `http://127.0.0.1:${stubPort}` },
+      db
+    )
+
+    await s.start()
+    // Give the fire-and-forget registration a moment to complete
+    await new Promise(r => setTimeout(r, 100))
+    await s.stop()
+    // Give the stop unregistration a moment (it's awaited but just in case)
+    await new Promise(r => setTimeout(r, 100))
+    await stub.close()
+    db.close()
+
+    expect(registered).toHaveLength(1)
+    expect((registered[0] as any).server_id).toBe('test-server')
+    expect(unregistered).toContain('test-server')
+  })
 })
