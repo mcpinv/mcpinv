@@ -7,7 +7,7 @@ import type Database from 'better-sqlite3'
 import type { McpClient } from './mcp-client.js'
 import { generateOpenApiSpec } from './openapi.js'
 import type { BridgeServerOptions } from './types.js'
-import { openDb, insertToolCall } from './db.js'
+import { openDb, insertToolCall, upsertKnownServer } from './db.js'
 import { EventBus } from './event-bus.js'
 import { registerApiRoutes } from './api-routes.js'
 
@@ -48,7 +48,15 @@ export class BridgeServer {
     this.registerRoutes()
     await this.fastify.listen({ port: this.options.port, host: this.options.host })
     this.started = true
+    upsertKnownServer(this.db, this.options.serverId)
     this.eventBus.emit_event({ type: 'server_up', data: { ts: Date.now(), server_id: this.options.serverId } })
+    // Non-fatal cockpit registration
+    const cockpitUrl = this.options.cockpitUrl ?? 'http://localhost:3000'
+    fetch(`${cockpitUrl}/api/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ server_id: this.options.serverId, port: this.options.port })
+    }).catch(() => {}) // cockpit may not be running
     this.log(`bridge started on ${this.options.host}:${this.options.port}`)
   }
 
@@ -148,6 +156,10 @@ export class BridgeServer {
   async stop(): Promise<void> {
     if (this.started) {
       this.eventBus.emit_event({ type: 'server_down', data: { ts: Date.now(), server_id: this.options.serverId } })
+      const cockpitUrl = this.options.cockpitUrl ?? 'http://localhost:3000'
+      await fetch(`${cockpitUrl}/api/register/${this.options.serverId}`, {
+        method: 'DELETE'
+      }).catch(() => {})
       await this.fastify.close()
       this.started = false
     }

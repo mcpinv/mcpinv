@@ -10,6 +10,7 @@ export interface BridgeServerOptions {
   host: string
   logPath: string
   dbPath?: string   // path to cockpit SQLite DB; defaults to ~/.mcpinv/cockpit.db
+  cockpitUrl?: string  // default: 'http://localhost:3000'
 }
 
 export interface DiagnosisContext {
