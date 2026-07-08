@@ -16,6 +16,12 @@ export interface ToolCallRow {
   error_msg: string | null
 }
 
+export interface KnownServer {
+  id: string
+  registered_at: number
+  last_seen_at: number | null
+}
+
 const DEFAULT_DB_PATH = join(homedir(), '.mcpinv', 'cockpit.db')
 
 export function openDb(path = DEFAULT_DB_PATH): Database.Database {
@@ -38,6 +44,11 @@ export function openDb(path = DEFAULT_DB_PATH): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_tc_ts     ON tool_calls(ts);
     CREATE INDEX IF NOT EXISTS idx_tc_server ON tool_calls(server_id);
     CREATE INDEX IF NOT EXISTS idx_tc_tool   ON tool_calls(tool_name);
+    CREATE TABLE IF NOT EXISTS known_servers (
+      id            TEXT    PRIMARY KEY,
+      registered_at INTEGER NOT NULL,
+      last_seen_at  INTEGER
+    );
     CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL PRIMARY KEY);
     INSERT OR IGNORE INTO schema_version VALUES (1);
   `)
@@ -63,4 +74,18 @@ function getInsertStmt(db: Database.Database): Database.Statement {
 export function insertToolCall(db: Database.Database, row: Omit<ToolCallRow, 'id'>): number {
   // Safe for any realistic row count; BigInt precision lost above 2^53 rows
   return Number(getInsertStmt(db).run(row).lastInsertRowid)
+}
+
+export function upsertKnownServer(db: Database.Database, id: string): void {
+  db.prepare(`
+    INSERT INTO known_servers (id, registered_at, last_seen_at)
+    VALUES (?, ?, NULL)
+    ON CONFLICT(id) DO NOTHING
+  `).run(id, Date.now())
+}
+
+export function listKnownServers(db: Database.Database): KnownServer[] {
+  return db.prepare(
+    'SELECT id, registered_at, last_seen_at FROM known_servers ORDER BY registered_at'
+  ).all() as KnownServer[]
 }
