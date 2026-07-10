@@ -35,7 +35,7 @@ export class CockpitServer {
       // public dir absent in development — UI runs on Vite :5173
     }
 
-    await registerApiRoutes(this.fastify, this.db, this.eventBus, this.registry as any)
+    await registerApiRoutes(this.fastify, this.db, this.eventBus, this.registry)
     await this.fastify.listen({ port: this.options.port, host: this.options.host })
     this.started = true
   }
