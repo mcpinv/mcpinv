@@ -5,7 +5,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 import * as http from 'http'
-import { openDb, insertToolCall, upsertKnownServer } from '../src/db.js'
+import { openDb, insertToolCall, upsertKnownServer, listKnownServers } from '../src/db.js'
 import { EventBus } from '../src/event-bus.js'
 import { registerApiRoutes } from '../src/api-routes.js'
 import { ActiveRegistry } from '../src/registry.js'
@@ -178,9 +178,9 @@ describe('CockpitServer API (registry mode)', () => {
     await app.close()
   })
 
-  it('POST /api/register adds server to registry', async () => {
+  it('POST /api/register adds server to registry and known_servers', async () => {
     const registry = new ActiveRegistry()
-    const { app } = await buildCockpitApp(registry)
+    const { app, db } = await buildCockpitApp(registry)
     const res = await app.inject({
       method: 'POST', url: '/api/register',
       headers: { 'content-type': 'application/json' },
@@ -188,6 +188,8 @@ describe('CockpitServer API (registry mode)', () => {
     })
     expect(res.statusCode).toBe(200)
     expect(registry.get('mira-local')?.port).toBe(3001)
+    const known = listKnownServers(db)
+    expect(known.some(s => s.id === 'mira-local')).toBe(true)
     await app.close()
   })
 

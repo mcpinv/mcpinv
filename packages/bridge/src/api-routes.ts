@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import type Database from 'better-sqlite3'
 import type { EventBus, CockpitEvent } from './event-bus.js'
-import { listKnownServers } from './db.js'
+import { listKnownServers, upsertKnownServer } from './db.js'
 import { ActiveRegistry } from './registry.js'
 
 const startTime = Date.now()
@@ -32,6 +32,7 @@ export async function registerApiRoutes(
 
   if (registry) {
     fastify.post<{ Body: { server_id: string; port: number } }>('/api/register', async (req) => {
+      upsertKnownServer(db, req.body.server_id)
       registry.register(req.body.server_id, req.body.port)
       eventBus.emit_event({ type: 'server_up', data: { ts: Date.now(), server_id: req.body.server_id } })
       return { ok: true }
