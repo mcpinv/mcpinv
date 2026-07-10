@@ -5,6 +5,11 @@ vi.mock('../../src/services/config-manager.js', () => ({
   listInstalled: vi.fn()
 }))
 
+vi.mock('@mcpinv/bridge', () => ({
+  openDb: vi.fn().mockReturnValue({ close: vi.fn() }),
+  upsertKnownServer: vi.fn()
+}))
+
 describe('importCommand', () => {
   beforeEach(() => { vi.clearAllMocks() })
 
@@ -55,5 +60,17 @@ describe('importCommand', () => {
 
     console.log = origLog
     expect(lines.some(l => l.toLowerCase().includes('no') || l.toLowerCase().includes('keine') || l.toLowerCase().includes('0'))).toBe(true)
+  })
+
+  it('writes discovered servers to SQLite known_servers', async () => {
+    const { listInstalled } = await import('../../src/services/config-manager.js')
+    const { upsertKnownServer, openDb } = await import('@mcpinv/bridge')
+    vi.mocked(listInstalled).mockResolvedValue(['mira-memory', 'filesystem'])
+
+    await importCommand().parseAsync([], { from: 'user' })
+
+    expect(openDb).toHaveBeenCalled()
+    expect(upsertKnownServer).toHaveBeenCalledWith(expect.anything(), 'mira-memory')
+    expect(upsertKnownServer).toHaveBeenCalledWith(expect.anything(), 'filesystem')
   })
 })
