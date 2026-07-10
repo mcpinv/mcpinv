@@ -40,10 +40,26 @@ describe('serveCommand', () => {
     expect(cmd.registeredArguments[0].name()).toBe('server-id')
   })
 
-  it('has --port option defaulting to 3000', () => {
+  it('defaults to port 3001', () => {
     const cmd = serveCommand()
-    const portOpt = cmd.options.find(o => o.long === '--port')
-    expect(portOpt).toBeDefined()
-    expect(portOpt?.defaultValue).toBe(3000)
+    const portOpt = cmd.options.find((o: { long: string }) => o.long === '--port')
+    expect(portOpt?.defaultValue).toBe(3001)
+  })
+
+  it('has --cockpit-url option defaulting to http://localhost:3000', () => {
+    const cmd = serveCommand()
+    const cockpitUrlOpt = cmd.options.find((o: { long: string }) => o.long === '--cockpit-url')
+    expect(cockpitUrlOpt).toBeDefined()
+    expect(cockpitUrlOpt?.defaultValue).toBe('http://localhost:3000')
+  })
+
+  it('passes cockpitUrl to BridgeServer', async () => {
+    const { BridgeServer } = await import('@mcpinv/bridge')
+    vi.mocked(BridgeServer).mockClear()
+
+    await serveCommand().parseAsync(['my-server', '--cockpit-url', 'http://localhost:9999'], { from: 'user' })
+
+    const callArg = vi.mocked(BridgeServer).mock.calls[0][1] as any
+    expect(callArg.cockpitUrl).toBe('http://localhost:9999')
   })
 })

@@ -1,6 +1,5 @@
 import { Command } from 'commander'
 import chalk from 'chalk'
-import open from 'open'
 import { homedir } from 'os'
 import { join } from 'path'
 import { mkdirSync } from 'fs'
@@ -12,11 +11,12 @@ export function serveCommand(): Command {
   return new Command('serve')
     .description('Start a local REST bridge for an installed MCP server')
     .argument('<server-id>', 'ID of the installed MCP server')
-    .option('--port <number>', 'HTTP port', (v) => parseInt(v, 10), 3000)
+    .option('--port <number>', 'HTTP port', (v) => parseInt(v, 10), 3001)
     .option('--host <host>', 'Bind host', 'localhost')
+    .option('--cockpit-url <url>', 'Cockpit hub URL to register with', 'http://localhost:3000')
     .option('--no-watch', 'Disable hot-swap on config changes')
     .option('--no-telemetry', 'Disable error DB and AI diagnosis')
-    .action(async (serverId: string, opts: { port: number; host: string; watch: boolean; telemetry: boolean }) => {
+    .action(async (serverId: string, opts: { port: number; host: string; watch: boolean; telemetry: boolean; cockpitUrl: string }) => {
       const serverConfig = await getServerConfig(serverId)
       if (!serverConfig) {
         console.error(chalk.red(`Server "${serverId}" not found. Run: mcpinv install ${serverId}`))
@@ -48,7 +48,7 @@ export function serveCommand(): Command {
         process.exit(1)
       }
 
-      const server = new BridgeServer(client, { serverId, port: opts.port, host: opts.host, logPath })
+      const server = new BridgeServer(client, { serverId, port: opts.port, host: opts.host, logPath, cockpitUrl: opts.cockpitUrl })
       try {
         await server.start()
       } catch (err) {
@@ -64,11 +64,7 @@ export function serveCommand(): Command {
       console.log(chalk.green(`✓ Bridge running on http://${opts.host}:${opts.port}`))
       console.log(`  OpenAPI spec:  http://${opts.host}:${opts.port}/openapi.json`)
       console.log(`  Tool list:     http://${opts.host}:${opts.port}/tools`)
-      const cockpitUrl = `http://${opts.host === '0.0.0.0' ? 'localhost' : opts.host}:${opts.port}`
-      console.log(chalk.dim(`  Cockpit UI:    ${cockpitUrl}`))
-      open(cockpitUrl).catch(() => {
-        // non-fatal — headless environments have no browser
-      })
+      console.log(chalk.dim(`  Cockpit UI:    ${opts.cockpitUrl}`))
 
       if (opts.watch) {
         const configPaths = await detectClients()
