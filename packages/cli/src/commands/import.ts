@@ -1,10 +1,11 @@
 import { Command } from 'commander'
 import chalk from 'chalk'
 import { listInstalled } from '../services/config-manager.js'
+import { openDb, upsertKnownServer } from '@mcpinv/bridge'
 
 export function importCommand(): Command {
   return new Command('import')
-    .description('Discover MCP servers already configured in Claude Desktop / Cursor')
+    .description('Discover MCP servers already configured in Claude Desktop / Cursor and register them in the Cockpit')
     .action(async () => {
       const ids = await listInstalled()
 
@@ -13,7 +14,13 @@ export function importCommand(): Command {
         return
       }
 
-      console.log(chalk.bold(`\n${ids.length} server(s) found in your config:\n`))
+      const db = openDb()
+      for (const id of ids) {
+        upsertKnownServer(db, id)
+      }
+      db.close()
+
+      console.log(chalk.bold(`\n${ids.length} server(s) found and registered in Cockpit:\n`))
       for (const id of ids) {
         console.log(`  ${chalk.cyan(id)}`)
         console.log(`  ${chalk.green(`mcpinv serve ${id}`)}\n`)
