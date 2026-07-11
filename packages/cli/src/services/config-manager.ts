@@ -95,6 +95,25 @@ export async function removeServer(serverId: string): Promise<void> {
   }
 }
 
+export async function wireServer(serverId: string): Promise<void> {
+  const claudePath = claudeConfigPath()
+  const config = await readJson(claudePath)
+  const entry: ServerEntry | undefined = config?.mcpServers?.[serverId]
+  if (!entry) return
+
+  // Already wired — idempotent no-op
+  if ((entry as any).__mcpinv_original__) return
+
+  const original = { command: entry.command, args: entry.args }
+  config.mcpServers[serverId] = {
+    __mcpinv_original__: original,
+    command: 'mcpinv',
+    args: ['serve', serverId, '--stdio'],
+    env: entry.env
+  }
+  await writeJson(claudePath, config)
+}
+
 export async function listInstalled(): Promise<string[]> {
   const config = await readJson(claudeConfigPath())
   return Object.keys(config.mcpServers ?? {})

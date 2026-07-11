@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { importCommand } from '../../src/commands/import.js'
 
 vi.mock('../../src/services/config-manager.js', () => ({
-  listInstalled: vi.fn()
+  listInstalled: vi.fn(),
+  wireServer: vi.fn()
 }))
 
 vi.mock('@mcpinv/bridge', () => ({
@@ -60,6 +61,16 @@ describe('importCommand', () => {
 
     console.log = origLog
     expect(lines.some(l => l.toLowerCase().includes('no') || l.toLowerCase().includes('keine') || l.toLowerCase().includes('0'))).toBe(true)
+  })
+
+  it('--wire flag calls wireServer for each discovered server', async () => {
+    const { listInstalled, wireServer } = await import('../../src/services/config-manager.js')
+    vi.mocked(listInstalled).mockResolvedValue(['mira-memory'])
+    vi.mocked(wireServer).mockResolvedValue(undefined)
+
+    await importCommand().parseAsync(['--wire'], { from: 'user' })
+
+    expect(wireServer).toHaveBeenCalledWith('mira-memory')
   })
 
   it('writes discovered servers to SQLite known_servers', async () => {
