@@ -5,7 +5,7 @@ import { join } from 'path'
 import { mkdirSync } from 'fs'
 import { getServerConfig, detectClients } from '../services/config-manager.js'
 import { listSecrets, getSecret } from '../services/keychain.js'
-import { McpClient, BridgeServer, ConfigWatcher } from '@mcpinv/bridge'
+import { McpClient, BridgeServer, ConfigWatcher, StdioBridge } from '@mcpinv/bridge'
 
 export function serveCommand(): Command {
   return new Command('serve')
@@ -16,7 +16,8 @@ export function serveCommand(): Command {
     .option('--cockpit-url <url>', 'Cockpit hub URL to register with', 'http://localhost:3000')
     .option('--no-watch', 'Disable hot-swap on config changes')
     .option('--no-telemetry', 'Disable error DB and AI diagnosis')
-    .action(async (serverId: string, opts: { port: number; host: string; watch: boolean; telemetry: boolean; cockpitUrl: string }) => {
+    .option('--stdio', 'Run as stdio MCP proxy (for Claude Desktop integration)')
+    .action(async (serverId: string, opts: { port: number; host: string; watch: boolean; telemetry: boolean; cockpitUrl: string; stdio: boolean }) => {
       const serverConfig = await getServerConfig(serverId)
       if (!serverConfig) {
         console.error(chalk.red(`Server "${serverId}" not found. Run: mcpinv install ${serverId}`))
@@ -46,6 +47,28 @@ export function serveCommand(): Command {
         console.error(chalk.red(`Failed to start MCP server "${serverId}": ${message}`))
         console.error(chalk.dim(`  Try: mcpinv diagnose ${serverId}`))
         process.exit(1)
+      }
+
+      if (opts.stdio) {
+        const bridge = new StdioBridge(client, {
+          serverId,
+          logPath,
+          cockpitUrl: opts.cockpitUrl
+        })
+        try {
+          await bridge.start()
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          console.error(chalk.red(`Failed to start stdio bridge: ${message}`))
+          await client.close()
+          process.exit(1)
+        }
+
+        const shutdown = async () => { await bridge.stop(); process.exit(0) }
+        process.on('SIGINT', shutdown)
+        process.on('SIGTERM', shutdown)
+        process.stdin.on('close', shutdown)
+        return
       }
 
       const server = new BridgeServer(client, { serverId, port: opts.port, host: opts.host, logPath, cockpitUrl: opts.cockpitUrl })

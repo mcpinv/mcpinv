@@ -24,6 +24,10 @@ vi.mock('@mcpinv/bridge', () => ({
   ConfigWatcher: vi.fn().mockImplementation(() => ({
     watch: vi.fn(),
     stop: vi.fn()
+  })),
+  StdioBridge: vi.fn().mockImplementation(() => ({
+    start: vi.fn().mockResolvedValue(undefined),
+    stop: vi.fn().mockResolvedValue(undefined)
   }))
 }))
 
@@ -61,5 +65,22 @@ describe('serveCommand', () => {
 
     const callArg = vi.mocked(BridgeServer).mock.calls[0][1] as any
     expect(callArg.cockpitUrl).toBe('http://localhost:9999')
+  })
+
+  it('has a --stdio flag', () => {
+    const cmd = serveCommand()
+    const stdioOpt = cmd.options.find((o: { long: string }) => o.long === '--stdio')
+    expect(stdioOpt).toBeDefined()
+  })
+
+  it('uses StdioBridge when --stdio is passed', async () => {
+    const { StdioBridge, BridgeServer } = await import('@mcpinv/bridge')
+    vi.mocked(StdioBridge).mockClear()
+    vi.mocked(BridgeServer).mockClear()
+
+    await serveCommand().parseAsync(['my-server', '--stdio'], { from: 'user' })
+
+    expect(StdioBridge).toHaveBeenCalled()
+    expect(BridgeServer).not.toHaveBeenCalled()
   })
 })
