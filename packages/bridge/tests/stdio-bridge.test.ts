@@ -3,6 +3,8 @@ import { PassThrough } from 'stream'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
+import { Server } from '@modelcontextprotocol/sdk/server/index.js'
+import { ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { openDb } from '../src/db.js'
 import { StdioBridge } from '../src/stdio-bridge.js'
 import type { McpClient } from '../src/mcp-client.js'
@@ -71,15 +73,29 @@ describe('StdioBridge', () => {
       properties: { path: { type: 'string' } },
       required: ['path']
     }
-    const callTool = vi.fn().mockResolvedValue([{ type: 'text', text: 'result' }])
     const client = mockClient({
       listTools: vi.fn().mockResolvedValue([
         { name: 'read_file', description: 'Read a file', inputSchema: schema }
-      ]),
-      callTool
+      ])
     })
     const db = openDb(join(tmpdir(), `mcpinv-stdio-test-${randomUUID()}.db`))
     const { stdin, stdout } = makeStreams()
+
+    // Spy on Server.prototype.setRequestHandler to capture the ListTools handler
+    // directly — avoids fragile raw-stdio parsing (MCP uses Content-Length framing,
+    // not bare newline-delimited JSON).
+    type HandlerFn = () => unknown
+    let capturedListToolsHandler: HandlerFn | null = null
+    const origSetRequestHandler = Server.prototype.setRequestHandler
+    vi.spyOn(Server.prototype, 'setRequestHandler').mockImplementation(
+      function (this: Server, schema: unknown, handler: HandlerFn) {
+        if (schema === ListToolsRequestSchema) {
+          capturedListToolsHandler = handler
+        }
+        return origSetRequestHandler.call(this, schema as Parameters<typeof origSetRequestHandler>[0], handler as Parameters<typeof origSetRequestHandler>[1])
+      }
+    )
+
     bridge = new StdioBridge(client, {
       serverId: 'schema-test-server',
       logPath: join(tmpdir(), 'stdio-test.log')
@@ -87,31 +103,11 @@ describe('StdioBridge', () => {
 
     await bridge.start()
 
-    // Simulate a tools/list request over the stdio transport and verify the
-    // response contains the forwarded inputSchema.
-    const requestId = 1
-    const listRequest = JSON.stringify({
-      jsonrpc: '2.0',
-      id: requestId,
-      method: 'tools/list',
-      params: {}
-    })
+    vi.restoreAllMocks()
 
-    const responseText = await new Promise<string>((resolve) => {
-      let buf = ''
-      stdout.on('data', (chunk: Buffer) => {
-        buf += chunk.toString()
-        // Each JSON-RPC message is terminated by \n\n in MCP stdio transport
-        if (buf.includes('\n\n') || buf.includes('"result"')) {
-          resolve(buf)
-        }
-      })
-      stdin.write(listRequest + '\n')
-    })
-
-    const response = JSON.parse(responseText.trim().split('\n').find(l => l.startsWith('{')) ?? '{}')
-    const tools: Array<{ name: string; inputSchema: unknown }> = response?.result?.tools ?? []
-    const readFileTool = tools.find((t) => t.name === 'read_file')
+    expect(capturedListToolsHandler).not.toBeNull()
+    const result = (capturedListToolsHandler as HandlerFn)() as { tools: Array<{ name: string; inputSchema: unknown }> }
+    const readFileTool = result.tools.find((t) => t.name === 'read_file')
 
     expect(readFileTool).toBeDefined()
     expect(readFileTool?.inputSchema).toMatchObject({
@@ -170,8 +166,11 @@ describe('StdioBridge', () => {
         if (msgCount >= 2) resolve()
       })
       stdin.write(initRequest + '\n')
-      // Give initialize a moment then send the call
-      setTimeout(() => stdin.write(callRequest + '\n'), 50)
+      // Wait for the initialize response before sending the call; 200 ms is
+      // sufficient headroom because the mock client resolves synchronously —
+      // a bare setTimeout is unavoidable here since the SDK's stdio framing
+      // does not expose a per-message completion event on PassThrough streams.
+      setTimeout(() => stdin.write(callRequest + '\n'), 200)
     })
 
     expect(callTool).toHaveBeenCalledWith('read_file', { path: '/tmp/foo.txt' })
