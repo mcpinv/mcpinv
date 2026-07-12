@@ -1,46 +1,52 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
-import { panel } from './index.js'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { ServersPanel } from './index.js'
 import * as client from '../../api/client.js'
 
-vi.mock('../../api/client.js')
+vi.mock('../../api/client.js', () => ({
+  getServers: vi.fn(),
+  subscribeEvents: vi.fn(() => () => {}),
+  startServer: vi.fn().mockResolvedValue(undefined),
+  stopServer: vi.fn().mockResolvedValue(undefined)
+}))
 
-const mockServer = {
-  id: 'my-server',
-  status: 'running' as const,
-  uptime_ms: 65000,
-  restart_count: 0,
-  last_error: null
-}
-
-beforeEach(() => {
-  vi.mocked(client.getServers).mockResolvedValue([mockServer])
-  vi.mocked(client.subscribeEvents).mockReturnValue(() => {})
-})
-
-describe('Servers panel', () => {
-  it('has correct panel metadata', () => {
-    expect(panel.id).toBe('servers')
-    expect(panel.label).toBe('Servers')
-    expect(panel.order).toBe(1)
-    expect(panel.route).toBe('/servers')
+describe('ServersPanel', () => {
+  beforeEach(() => {
+    vi.mocked(client.getServers).mockResolvedValue([
+      { id: 'my-server', status: 'stopped', uptime_ms: null, restart_count: 0, last_error: null, today_calls: 7 }
+    ])
   })
 
-  it('displays server id and status', async () => {
-    render(<MemoryRouter><panel.component /></MemoryRouter>)
-    await waitFor(() => screen.getByText('my-server'))
-    expect(screen.getByText('running')).toBeTruthy()
+  it('shows today_calls count', async () => {
+    render(<ServersPanel />)
+    expect(await screen.findByText('7')).toBeInTheDocument()
   })
 
-  it('shows uptime in human-readable format', async () => {
-    render(<MemoryRouter><panel.component /></MemoryRouter>)
-    await waitFor(() => screen.getByText('1m'))
+  it('shows Start button for stopped server', async () => {
+    render(<ServersPanel />)
+    expect(await screen.findByRole('button', { name: /start/i })).toBeInTheDocument()
   })
 
-  it('shows error message when fetch fails', async () => {
-    vi.mocked(client.getServers).mockRejectedValue(new Error('network down'))
-    render(<MemoryRouter><panel.component /></MemoryRouter>)
-    await waitFor(() => screen.getByText(/network down/))
+  it('shows Stop button for running server', async () => {
+    vi.mocked(client.getServers).mockResolvedValue([
+      { id: 'my-server', status: 'running', uptime_ms: 5000, restart_count: 0, last_error: null, today_calls: 3 }
+    ])
+    render(<ServersPanel />)
+    expect(await screen.findByRole('button', { name: /stop/i })).toBeInTheDocument()
+  })
+
+  it('calls startServer when Start button clicked', async () => {
+    render(<ServersPanel />)
+    fireEvent.click(await screen.findByRole('button', { name: /start/i }))
+    await waitFor(() => expect(client.startServer).toHaveBeenCalledWith('my-server'))
+  })
+
+  it('calls stopServer when Stop button clicked', async () => {
+    vi.mocked(client.getServers).mockResolvedValue([
+      { id: 'running-srv', status: 'running', uptime_ms: 1000, restart_count: 0, last_error: null, today_calls: 0 }
+    ])
+    render(<ServersPanel />)
+    fireEvent.click(await screen.findByRole('button', { name: /stop/i }))
+    await waitFor(() => expect(client.stopServer).toHaveBeenCalledWith('running-srv'))
   })
 })

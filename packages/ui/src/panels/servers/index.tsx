@@ -1,22 +1,14 @@
 import { useEffect, useState } from 'react'
-import { getServers, subscribeEvents, type ServerStatus } from '../../api/client.js'
+import {
+  getServers, startServer, stopServer, subscribeEvents,
+  type ServerStatus
+} from '../../api/client.js'
 import type { Panel } from '../../registry.js'
 
-function formatUptime(ms: number): string {
-  if (ms < 60_000)    return `${Math.floor(ms / 1_000)}s`
-  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m`
-  return `${Math.floor(ms / 3_600_000)}h`
-}
-
-function statusColor(status: string): string {
-  if (status === 'running') return '#10b981'
-  if (status === 'error')   return '#ef4444'
-  return '#6b7280'
-}
-
-function ServersPanel() {
-  const [servers, setServers] = useState<ServerStatus[]>([])
-  const [error, setError]     = useState<string | null>(null)
+export function ServersPanel() {
+  const [servers, setServers]   = useState<ServerStatus[]>([])
+  const [error, setError]       = useState<string | null>(null)
+  const [loading, setLoading]   = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     getServers().then(setServers).catch(e => setError((e as Error).message))
@@ -28,8 +20,32 @@ function ServersPanel() {
     })
   }, [])
 
-  if (error) return <p style={{ color: '#ef4444' }}>Failed to load: {error}</p>
-  if (!servers.length) return <p style={{ color: '#6b7280' }}>No servers running.</p>
+  const handleStart = async (id: string) => {
+    setLoading(l => ({ ...l, [id]: true }))
+    try {
+      await startServer(id)
+      // Bridge will register itself via SSE → re-fetch triggered by subscribeEvents
+    } catch {
+      getServers().then(setServers).catch(() => {})
+    } finally {
+      setLoading(l => ({ ...l, [id]: false }))
+    }
+  }
+
+  const handleStop = async (id: string) => {
+    setLoading(l => ({ ...l, [id]: true }))
+    try {
+      await stopServer(id)
+    } catch {
+      // ignore
+    } finally {
+      setLoading(l => ({ ...l, [id]: false }))
+      getServers().then(setServers).catch(() => {})
+    }
+  }
+
+  if (error)           return <p style={{ color: '#ef4444' }}>Failed to load: {error}</p>
+  if (!servers.length) return <p style={{ color: '#6b7280' }}>No servers registered. Run: mcpinv import</p>
 
   return (
     <div>
@@ -40,7 +56,9 @@ function ServersPanel() {
             <th style={{ paddingBottom: 8, paddingRight: 16 }}>Server</th>
             <th style={{ paddingBottom: 8, paddingRight: 16 }}>Status</th>
             <th style={{ paddingBottom: 8, paddingRight: 16 }}>Uptime</th>
-            <th style={{ paddingBottom: 8 }}>Last Error</th>
+            <th style={{ paddingBottom: 8, paddingRight: 16 }}>Today</th>
+            <th style={{ paddingBottom: 8, paddingRight: 16 }}>Last Error</th>
+            <th style={{ paddingBottom: 8 }}>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -53,10 +71,50 @@ function ServersPanel() {
                   background: `${statusColor(s.status)}22`, color: statusColor(s.status)
                 }}>{s.status}</span>
               </td>
-              <td style={{ paddingRight: 16, color: '#9ca3af' }}>{formatUptime(s.uptime_ms)}</td>
-              <td style={{ color: '#ef4444', fontSize: 11, maxWidth: 300,
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <td style={{ paddingRight: 16, color: '#9ca3af' }}>
+                {s.uptime_ms != null ? formatUptime(s.uptime_ms) : '—'}
+              </td>
+              <td style={{ paddingRight: 16, color: '#9ca3af' }}>
+                {s.today_calls}
+              </td>
+              <td style={{ color: '#ef4444', fontSize: 11, maxWidth: 200,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                paddingRight: 16 }}>
                 {s.last_error ?? '—'}
+              </td>
+              <td>
+                {s.status === 'running'
+                  ? (
+                    <button
+                      aria-label={`Stop ${s.id}`}
+                      disabled={loading[s.id]}
+                      onClick={() => handleStop(s.id)}
+                      style={{
+                        padding: '3px 10px', borderRadius: 4, fontSize: 11,
+                        cursor: loading[s.id] ? 'default' : 'pointer',
+                        background: '#1f2937', color: '#ef4444',
+                        border: '1px solid #374151', opacity: loading[s.id] ? 0.5 : 1
+                      }}
+                    >
+                      Stop
+                    </button>
+                  )
+                  : (
+                    <button
+                      aria-label={`Start ${s.id}`}
+                      disabled={loading[s.id]}
+                      onClick={() => handleStart(s.id)}
+                      style={{
+                        padding: '3px 10px', borderRadius: 4, fontSize: 11,
+                        cursor: loading[s.id] ? 'default' : 'pointer',
+                        background: '#064e3b', color: '#34d399',
+                        border: '1px solid #065f46', opacity: loading[s.id] ? 0.5 : 1
+                      }}
+                    >
+                      Start
+                    </button>
+                  )
+                }
               </td>
             </tr>
           ))}
@@ -64,6 +122,18 @@ function ServersPanel() {
       </table>
     </div>
   )
+}
+
+function formatUptime(ms: number): string {
+  if (ms < 60_000)    return `${Math.floor(ms / 1_000)}s`
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m`
+  return `${Math.floor(ms / 3_600_000)}h`
+}
+
+function statusColor(status: string): string {
+  if (status === 'running') return '#10b981'
+  if (status === 'error')   return '#ef4444'
+  return '#6b7280'
 }
 
 export const panel: Panel = {
