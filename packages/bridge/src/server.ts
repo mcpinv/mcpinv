@@ -55,7 +55,7 @@ export class BridgeServer {
     fetch(`${cockpitUrl}/api/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ server_id: this.options.serverId, port: this.options.port })
+      body: JSON.stringify({ server_id: this.options.serverId, port: this.options.port, pid: process.pid })
     }).catch(() => {}) // cockpit may not be running
     this.log(`bridge started on ${this.options.host}:${this.options.port}`)
   }

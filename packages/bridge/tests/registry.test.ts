@@ -36,3 +36,17 @@ describe('ActiveRegistry', () => {
     expect(reg.get('unknown')).toBeUndefined()
   })
 })
+
+describe('ActiveRegistry — pid tracking', () => {
+  it('stores pid when provided', () => {
+    const reg = new ActiveRegistry()
+    reg.register('srv', 3001, 1234)
+    expect(reg.get('srv')?.pid).toBe(1234)
+  })
+
+  it('stores undefined pid when not provided', () => {
+    const reg = new ActiveRegistry()
+    reg.register('srv', 3001)
+    expect(reg.get('srv')?.pid).toBeUndefined()
+  })
+})

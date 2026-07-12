@@ -10,7 +10,8 @@ export async function registerApiRoutes(
   fastify: FastifyInstance,
   db: Database.Database,
   eventBus: EventBus,
-  registryOrServerId: ActiveRegistry | string
+  registryOrServerId: ActiveRegistry | string,
+  cliBin?: string
 ): Promise<void> {
   const isRegistry = registryOrServerId instanceof ActiveRegistry
   const legacyServerId = isRegistry ? null : registryOrServerId
@@ -31,9 +32,9 @@ export async function registerApiRoutes(
   })
 
   if (registry) {
-    fastify.post<{ Body: { server_id: string; port: number } }>('/api/register', async (req) => {
+    fastify.post<{ Body: { server_id: string; port: number; pid?: number } }>('/api/register', async (req) => {
       upsertKnownServer(db, req.body.server_id)
-      registry.register(req.body.server_id, req.body.port)
+      registry.register(req.body.server_id, req.body.port, req.body.pid)
       eventBus.emit_event({ type: 'server_up', data: { ts: Date.now(), server_id: req.body.server_id } })
       return { ok: true }
     })
@@ -41,6 +42,34 @@ export async function registerApiRoutes(
     fastify.delete<{ Params: { id: string } }>('/api/register/:id', async (req) => {
       registry.unregister(req.params.id)
       eventBus.emit_event({ type: 'server_down', data: { ts: Date.now(), server_id: req.params.id } })
+      return { ok: true }
+    })
+
+    fastify.post<{ Params: { id: string } }>('/api/servers/:id/start', async (req, reply) => {
+      if (!cliBin) {
+        return reply.code(501).send({ error: 'spawn_not_configured' })
+      }
+      const addr = fastify.server.address() as { port: number } | null
+      const cockpitOrigin = `http://localhost:${addr?.port ?? 3000}`
+      const { spawn } = await import('child_process')
+      const child = spawn(process.execPath, [cliBin, 'serve', req.params.id, '--cockpit-url', cockpitOrigin], {
+        detached: true,
+        stdio: 'ignore'
+      })
+      child.unref()
+      return { ok: true }
+    })
+
+    fastify.post<{ Params: { id: string } }>('/api/servers/:id/stop', async (req, reply) => {
+      const entry = registry.get(req.params.id)
+      if (!entry?.pid) {
+        return reply.code(404).send({ error: 'pid_unknown' })
+      }
+      try {
+        process.kill(entry.pid, 'SIGTERM')
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ESRCH') throw err
+      }
       return { ok: true }
     })
   }
