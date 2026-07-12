@@ -60,13 +60,20 @@ export async function registerApiRoutes(
       }
       const addr = fastify.server.address() as { port: number } | null
       const cockpitOrigin = `http://localhost:${addr?.port ?? 3000}`
+      const knownServers = listKnownServers(db)
+      const serverIndex = knownServers.findIndex(s => s.id === req.params.id)
+      const bridgePort = 3001 + (serverIndex >= 0 ? serverIndex : 0)
       const { spawn } = await import('child_process')
-      const child = spawn(process.execPath, [cliBin, 'serve', req.params.id, '--cockpit-url', cockpitOrigin], {
+      const child = spawn(process.execPath, [
+        cliBin, 'serve', req.params.id,
+        '--port', String(bridgePort),
+        '--cockpit-url', cockpitOrigin
+      ], {
         detached: true,
         stdio: 'ignore'
       })
       child.unref()
-      return { ok: true }
+      return { ok: true, port: bridgePort }
     })
 
     fastify.post<{ Params: { id: string } }>('/api/servers/:id/stop', async (req, reply) => {

@@ -227,13 +227,16 @@ describe('POST /api/servers/:id/start', () => {
 
   it('returns ok:true and spawns bridge when cliBin is configured', async () => {
     const { spawn } = await import('child_process')
-    const { app } = await buildCockpitAppWithCliBin('/usr/bin/mcpinv')
+    const { app, db } = await buildCockpitAppWithCliBin('/usr/bin/mcpinv')
+    upsertKnownServer(db, 'my-server')
     const res = await app.inject({ method: 'POST', url: '/api/servers/my-server/start' })
     expect(res.statusCode).toBe(200)
-    expect(JSON.parse(res.body)).toEqual({ ok: true })
+    const body = JSON.parse(res.body) as { ok: boolean; port: number }
+    expect(body.ok).toBe(true)
+    expect(typeof body.port).toBe('number')
     expect(vi.mocked(spawn)).toHaveBeenCalledWith(
       expect.any(String),
-      ['/usr/bin/mcpinv', 'serve', 'my-server', '--cockpit-url', expect.stringContaining('http://')],
+      expect.arrayContaining(['/usr/bin/mcpinv', 'serve', 'my-server', '--port', expect.any(String), '--cockpit-url', expect.stringContaining('http://')]),
       expect.objectContaining({ detached: true, stdio: 'ignore' })
     )
     await app.close()
