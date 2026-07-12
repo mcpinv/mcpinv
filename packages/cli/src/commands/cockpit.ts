@@ -11,7 +11,7 @@ export function cockpitCommand(): Command {
     .option('--host <host>', 'Bind host', 'localhost')
     .option('--db <path>', 'SQLite DB path (default: ~/.mcpinv/cockpit.db)')
     .action(async (opts: { port: number; host: string; db?: string }) => {
-      const server = new CockpitServer({ port: opts.port, host: opts.host, dbPath: opts.db })
+      const server = new CockpitServer({ port: opts.port, host: opts.host, dbPath: opts.db, cliBin: process.argv[1] })
       try {
         await server.start()
       } catch (err: unknown) {

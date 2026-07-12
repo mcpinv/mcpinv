@@ -31,6 +31,7 @@ export interface CockpitServerOptions {
   port: number
   host: string
   dbPath?: string
+  cliBin?: string  // path to mcpinv CLI script; enables Cockpit-initiated bridge spawn
 }
 
 export interface ErrorGuide {

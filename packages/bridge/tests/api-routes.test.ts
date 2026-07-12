@@ -1,4 +1,8 @@
-import { describe, it, expect, afterAll } from 'vitest'
+import { describe, it, expect, afterAll, vi } from 'vitest'
+
+vi.mock('child_process', () => ({
+  spawn: vi.fn().mockReturnValue({ pid: 9999, unref: vi.fn() })
+}))
 import Fastify from 'fastify'
 import { existsSync, unlinkSync } from 'fs'
 import { join } from 'path'
@@ -201,5 +205,121 @@ describe('CockpitServer API (registry mode)', () => {
     expect(res.statusCode).toBe(200)
     expect(registry.get('mira-local')).toBeUndefined()
     await app.close()
+  })
+})
+
+describe('POST /api/servers/:id/start', () => {
+  const paths: string[] = []
+
+  async function buildCockpitAppWithCliBin(cliBin?: string, registry = new ActiveRegistry()) {
+    const p = join(tmpdir(), `mcpinv-test-${randomUUID()}.db`)
+    paths.push(p)
+    const db = openDb(p)
+    openDbs.push(db)
+    const bus = new EventBus()
+    const a = Fastify()
+    await registerApiRoutes(a, db, bus, registry, cliBin)
+    await a.listen({ port: 0, host: '127.0.0.1' })
+    return { app: a, db, bus, registry }
+  }
+
+  afterAll(() => paths.forEach(p => { try { unlinkSync(p) } catch { /* ignore */ } }))
+
+  it('returns ok:true and spawns bridge when cliBin is configured', async () => {
+    const { spawn } = await import('child_process')
+    const { app } = await buildCockpitAppWithCliBin('/usr/bin/mcpinv')
+    const res = await app.inject({ method: 'POST', url: '/api/servers/my-server/start' })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body)).toEqual({ ok: true })
+    expect(vi.mocked(spawn)).toHaveBeenCalledWith(
+      expect.any(String),
+      ['/usr/bin/mcpinv', 'serve', 'my-server', '--cockpit-url', expect.stringContaining('http://')],
+      expect.objectContaining({ detached: true, stdio: 'ignore' })
+    )
+    await app.close()
+  })
+
+  it('returns 501 when cliBin is not configured', async () => {
+    const { app } = await buildCockpitAppWithCliBin(undefined)
+    const res = await app.inject({ method: 'POST', url: '/api/servers/my-server/start' })
+    expect(res.statusCode).toBe(501)
+    await app.close()
+  })
+})
+
+describe('POST /api/servers/:id/stop', () => {
+  const paths: string[] = []
+
+  async function buildCockpitAppForStop(registry = new ActiveRegistry()) {
+    const p = join(tmpdir(), `mcpinv-test-${randomUUID()}.db`)
+    paths.push(p)
+    const db = openDb(p)
+    openDbs.push(db)
+    const bus = new EventBus()
+    const a = Fastify()
+    await registerApiRoutes(a, db, bus, registry)
+    await a.ready()
+    return { app: a, db, bus, registry }
+  }
+
+  afterAll(() => paths.forEach(p => { try { unlinkSync(p) } catch { /* ignore */ } }))
+
+  it('sends SIGTERM to stored PID', async () => {
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
+    const registry = new ActiveRegistry()
+    registry.register('my-server', 3001, 5678)
+    const { app } = await buildCockpitAppForStop(registry)
+    const res = await app.inject({ method: 'POST', url: '/api/servers/my-server/stop' })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body)).toEqual({ ok: true })
+    expect(killSpy).toHaveBeenCalledWith(5678, 'SIGTERM')
+    killSpy.mockRestore()
+    await app.close()
+  })
+
+  it('returns 404 when server not in registry', async () => {
+    const { app } = await buildCockpitAppForStop()
+    const res = await app.inject({ method: 'POST', url: '/api/servers/unknown-server/stop' })
+    expect(res.statusCode).toBe(404)
+    await app.close()
+  })
+
+  it('returns ok:true even when process already dead (ESRCH)', async () => {
+    const err = Object.assign(new Error('No such process'), { code: 'ESRCH' })
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => { throw err })
+    const registry = new ActiveRegistry()
+    registry.register('dying-server', 3002, 9999)
+    const { app } = await buildCockpitAppForStop(registry)
+    const res = await app.inject({ method: 'POST', url: '/api/servers/dying-server/stop' })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body)).toEqual({ ok: true })
+    killSpy.mockRestore()
+    await app.close()
+  })
+})
+
+describe('POST /api/register with pid', () => {
+  const paths: string[] = []
+
+  afterAll(() => paths.forEach(p => { try { unlinkSync(p) } catch { /* ignore */ } }))
+
+  it('stores pid in registry', async () => {
+    const p = join(tmpdir(), `mcpinv-test-${randomUUID()}.db`)
+    paths.push(p)
+    const db = openDb(p)
+    openDbs.push(db)
+    const registry = new ActiveRegistry()
+    const bus = new EventBus()
+    const a = Fastify()
+    await registerApiRoutes(a, db, bus, registry)
+    await a.ready()
+    const res = await a.inject({
+      method: 'POST', url: '/api/register',
+      headers: { 'content-type': 'application/json' },
+      payload: { server_id: 'srv', port: 3001, pid: 4242 }
+    })
+    expect(res.statusCode).toBe(200)
+    expect(registry.get('srv')?.pid).toBe(4242)
+    await a.close()
   })
 })
