@@ -21,14 +21,23 @@ export async function registerApiRoutes(
     if (registry) {
       const known = listKnownServers(db)
       const activeMap = new Map(registry.getAll().map(e => [e.server_id, e]))
+
+      const todayStart = new Date()
+      todayStart.setUTCHours(0, 0, 0, 0)
+      const todayStartMs = todayStart.getTime()
+      const todayRows = db.prepare(
+        'SELECT server_id, COUNT(*) AS calls FROM tool_calls WHERE ts >= ? GROUP BY server_id'
+      ).all(todayStartMs) as { server_id: string; calls: number }[]
+      const todayMap = new Map(todayRows.map(r => [r.server_id, r.calls]))
+
       return known.map(k => {
         const entry = activeMap.get(k.id)
         return entry
-          ? { id: k.id, status: 'running', uptime_ms: Date.now() - entry.started_at, restart_count: 0, last_error: null }
-          : { id: k.id, status: 'stopped', uptime_ms: null, restart_count: 0, last_error: null }
+          ? { id: k.id, status: 'running', uptime_ms: Date.now() - entry.started_at, restart_count: 0, last_error: null, today_calls: todayMap.get(k.id) ?? 0 }
+          : { id: k.id, status: 'stopped', uptime_ms: null, restart_count: 0, last_error: null, today_calls: todayMap.get(k.id) ?? 0 }
       })
     }
-    return [{ id: legacyServerId, status: 'running', uptime_ms: Date.now() - startTime, restart_count: 0, last_error: null }]
+    return [{ id: legacyServerId, status: 'running', uptime_ms: Date.now() - startTime, restart_count: 0, last_error: null, today_calls: 0 }]
   })
 
   if (registry) {

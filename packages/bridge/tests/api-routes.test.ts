@@ -298,6 +298,51 @@ describe('POST /api/servers/:id/stop', () => {
   })
 })
 
+describe('GET /api/servers — today_calls', () => {
+  const paths: string[] = []
+
+  async function buildCockpitApp(registry = new ActiveRegistry()) {
+    const p = join(tmpdir(), `mcpinv-test-${randomUUID()}.db`)
+    paths.push(p)
+    const db = openDb(p)
+    openDbs.push(db)
+    const bus = new EventBus()
+    const a = Fastify()
+    await registerApiRoutes(a, db, bus, registry)
+    await a.ready()
+    return { app: a, db, bus, registry }
+  }
+
+  afterAll(() => paths.forEach(p => { try { unlinkSync(p) } catch { /* ignore */ } }))
+
+  it('returns today_calls count for each server', async () => {
+    const { app, db } = await buildCockpitApp()
+    upsertKnownServer(db, 'srv-a')
+    insertToolCall(db, { ts: Date.now(), server_id: 'srv-a', tool_name: 't', args_hash: '1', duration_ms: 1, input_tokens: null, output_tokens: null, success: 1, error_msg: null })
+    insertToolCall(db, { ts: Date.now(), server_id: 'srv-a', tool_name: 't', args_hash: '2', duration_ms: 1, input_tokens: null, output_tokens: null, success: 1, error_msg: null })
+    insertToolCall(db, { ts: Date.now(), server_id: 'srv-a', tool_name: 't', args_hash: '3', duration_ms: 1, input_tokens: null, output_tokens: null, success: 1, error_msg: null })
+    // ts=0 is epoch (not today)
+    insertToolCall(db, { ts: 0, server_id: 'srv-a', tool_name: 't', args_hash: '4', duration_ms: 1, input_tokens: null, output_tokens: null, success: 1, error_msg: null })
+    const res = await app.inject({ method: 'GET', url: '/api/servers' })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body) as Array<{ id: string; today_calls: number }>
+    const srv = body.find(s => s.id === 'srv-a')
+    expect(srv?.today_calls).toBe(3)
+    await app.close()
+  })
+
+  it('returns 0 today_calls when no calls today', async () => {
+    const { app, db } = await buildCockpitApp()
+    upsertKnownServer(db, 'srv-b')
+    const res = await app.inject({ method: 'GET', url: '/api/servers' })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body) as Array<{ id: string; today_calls: number }>
+    const srv = body.find(s => s.id === 'srv-b')
+    expect(srv?.today_calls).toBe(0)
+    await app.close()
+  })
+})
+
 describe('POST /api/register with pid', () => {
   const paths: string[] = []
 
