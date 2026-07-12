@@ -9,6 +9,7 @@ export function ServersPanel() {
   const [servers, setServers]   = useState<ServerStatus[]>([])
   const [error, setError]       = useState<string | null>(null)
   const [loading, setLoading]   = useState<Record<string, boolean>>({})
+  const [actionError, setActionError] = useState<Record<string, string | null>>({})
 
   useEffect(() => {
     getServers().then(setServers).catch(e => setError((e as Error).message))
@@ -22,10 +23,13 @@ export function ServersPanel() {
 
   const handleStart = async (id: string) => {
     setLoading(l => ({ ...l, [id]: true }))
+    setActionError(e => ({ ...e, [id]: null }))
     try {
       await startServer(id)
       // Bridge will register itself via SSE → re-fetch triggered by subscribeEvents
-    } catch {
+    } catch (err) {
+      const msg = (err as Error).message || 'Start failed'
+      setActionError(e => ({ ...e, [id]: msg }))
       getServers().then(setServers).catch(() => {})
     } finally {
       setLoading(l => ({ ...l, [id]: false }))
@@ -34,10 +38,12 @@ export function ServersPanel() {
 
   const handleStop = async (id: string) => {
     setLoading(l => ({ ...l, [id]: true }))
+    setActionError(e => ({ ...e, [id]: null }))
     try {
       await stopServer(id)
-    } catch {
-      // ignore
+    } catch (err) {
+      const msg = (err as Error).message || 'Stop failed'
+      setActionError(e => ({ ...e, [id]: msg }))
     } finally {
       setLoading(l => ({ ...l, [id]: false }))
       getServers().then(setServers).catch(() => {})
@@ -85,34 +91,48 @@ export function ServersPanel() {
               <td>
                 {s.status === 'running'
                   ? (
-                    <button
-                      aria-label={`Stop ${s.id}`}
-                      disabled={loading[s.id]}
-                      onClick={() => handleStop(s.id)}
-                      style={{
-                        padding: '3px 10px', borderRadius: 4, fontSize: 11,
-                        cursor: loading[s.id] ? 'default' : 'pointer',
-                        background: '#1f2937', color: '#ef4444',
-                        border: '1px solid #374151', opacity: loading[s.id] ? 0.5 : 1
-                      }}
-                    >
-                      Stop
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                      <button
+                        aria-label={`Stop ${s.id}`}
+                        disabled={loading[s.id]}
+                        onClick={() => handleStop(s.id)}
+                        style={{
+                          padding: '3px 10px', borderRadius: 4, fontSize: 11,
+                          cursor: loading[s.id] ? 'default' : 'pointer',
+                          background: '#1f2937', color: '#fca5a5',
+                          border: '1px solid #374151', opacity: loading[s.id] ? 0.5 : 1
+                        }}
+                      >
+                        Stop
+                      </button>
+                      {actionError[s.id] && (
+                        <span style={{ color: '#ef4444', fontSize: 10, marginLeft: 6 }}>
+                          {actionError[s.id]}
+                        </span>
+                      )}
+                    </div>
                   )
                   : (
-                    <button
-                      aria-label={`Start ${s.id}`}
-                      disabled={loading[s.id]}
-                      onClick={() => handleStart(s.id)}
-                      style={{
-                        padding: '3px 10px', borderRadius: 4, fontSize: 11,
-                        cursor: loading[s.id] ? 'default' : 'pointer',
-                        background: '#064e3b', color: '#34d399',
-                        border: '1px solid #065f46', opacity: loading[s.id] ? 0.5 : 1
-                      }}
-                    >
-                      Start
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                      <button
+                        aria-label={`Start ${s.id}`}
+                        disabled={loading[s.id]}
+                        onClick={() => handleStart(s.id)}
+                        style={{
+                          padding: '3px 10px', borderRadius: 4, fontSize: 11,
+                          cursor: loading[s.id] ? 'default' : 'pointer',
+                          background: '#064e3b', color: '#34d399',
+                          border: '1px solid #065f46', opacity: loading[s.id] ? 0.5 : 1
+                        }}
+                      >
+                        Start
+                      </button>
+                      {actionError[s.id] && (
+                        <span style={{ color: '#ef4444', fontSize: 10, marginLeft: 6 }}>
+                          {actionError[s.id]}
+                        </span>
+                      )}
+                    </div>
                   )
                 }
               </td>
