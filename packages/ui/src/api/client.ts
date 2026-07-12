@@ -3,9 +3,10 @@ const BASE = ''
 export interface ServerStatus {
   id: string
   status: 'running' | 'stopped' | 'error'
-  uptime_ms: number
+  uptime_ms: number | null
   restart_count: number
   last_error: string | null
+  today_calls: number
 }
 
 export interface ToolCall {
@@ -40,6 +41,16 @@ async function get<T>(path: string): Promise<T> {
 }
 
 export const getServers      = () => get<ServerStatus[]>('/api/servers')
+
+export async function startServer(id: string): Promise<void> {
+  const r = await fetch(`${BASE}/api/servers/${encodeURIComponent(id)}/start`, { method: 'POST' })
+  if (!r.ok) throw new Error(`start ${id}: ${r.status}`)
+}
+
+export async function stopServer(id: string): Promise<void> {
+  const r = await fetch(`${BASE}/api/servers/${encodeURIComponent(id)}/stop`, { method: 'POST' })
+  if (!r.ok) throw new Error(`stop ${id}: ${r.status}`)
+}
 export const getTokenSummary = () => get<TokenSummary>('/api/tokens/summary')
 export const getTokensDaily  = (days = 14) => get<DailyBucket[]>(`/api/tokens/daily?days=${days}`)
 
