@@ -4,6 +4,7 @@ import { openDb } from './db.js'
 import { EventBus } from './event-bus.js'
 import { ActiveRegistry } from './registry.js'
 import { registerApiRoutes } from './api-routes.js'
+import { reconnectKnownServers } from './reconnect.js'
 import type { CockpitServerOptions } from './types.js'
 
 export class CockpitServer {
@@ -38,6 +39,7 @@ export class CockpitServer {
     await registerApiRoutes(this.fastify, this.db, this.eventBus, this.registry, this.options.cliBin)
     await this.fastify.listen({ port: this.options.port, host: this.options.host })
     this.started = true
+    reconnectKnownServers(this.db, this.registry, this.eventBus).catch(() => {})
   }
 
   async stop(): Promise<void> {
