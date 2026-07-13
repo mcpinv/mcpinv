@@ -20,6 +20,7 @@ export interface KnownServer {
   id: string
   registered_at: number
   last_seen_at: number | null
+  last_port: number | null
 }
 
 const DEFAULT_DB_PATH = join(homedir(), '.mcpinv', 'cockpit.db')
@@ -49,9 +50,15 @@ export function openDb(path = DEFAULT_DB_PATH): Database.Database {
       registered_at INTEGER NOT NULL,
       last_seen_at  INTEGER
     );
-    CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL PRIMARY KEY);
-    INSERT OR IGNORE INTO schema_version VALUES (1);
+    CREATE TABLE IF NOT EXISTS schema_version (id INTEGER PRIMARY KEY DEFAULT 1, version INTEGER NOT NULL);
+    INSERT OR IGNORE INTO schema_version (id, version) VALUES (1, 1);
   `)
+  // Migrate schema v1 → v2: add last_port column
+  const currentVersion = (db.prepare('SELECT version FROM schema_version WHERE id = 1').get() as { version: number }).version
+  if (currentVersion < 2) {
+    db.exec('ALTER TABLE known_servers ADD COLUMN last_port INTEGER')
+    db.prepare('UPDATE schema_version SET version = 2 WHERE id = 1').run()
+  }
   return db
 }
 
@@ -84,8 +91,12 @@ export function upsertKnownServer(db: Database.Database, id: string): void {
   `).run(id, Date.now())
 }
 
+export function updateLastPort(db: Database.Database, id: string, port: number): void {
+  db.prepare('UPDATE known_servers SET last_port = ? WHERE id = ?').run(port, id)
+}
+
 export function listKnownServers(db: Database.Database): KnownServer[] {
   return db.prepare(
-    'SELECT id, registered_at, last_seen_at FROM known_servers ORDER BY registered_at'
+    'SELECT id, registered_at, last_seen_at, last_port FROM known_servers ORDER BY registered_at'
   ).all() as KnownServer[]
 }

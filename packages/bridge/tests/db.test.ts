@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { openDb, insertToolCall, upsertKnownServer, listKnownServers, ToolCallRow } from '../src/db.js'
+import { openDb, insertToolCall, upsertKnownServer, listKnownServers, updateLastPort, ToolCallRow } from '../src/db.js'
 import { unlinkSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -75,6 +75,43 @@ describe('upsertKnownServer', () => {
     const ids = listKnownServers(db).map(r => r.id)
     expect(ids).toContain('mira-local')
     expect(ids).toContain('mira-memory')
+    db.close()
+  })
+})
+
+describe('last_port migration', () => {
+  it('known_servers table has last_port column after openDb', () => {
+    const db = openDb(join(tmpdir(), `mcpinv-test-${randomUUID()}.db`))
+    upsertKnownServer(db, 'srv-a')
+    const row = db.prepare('SELECT last_port FROM known_servers WHERE id = ?').get('srv-a') as any
+    expect(row).toBeDefined()
+    expect(row.last_port).toBeNull()
+    db.close()
+  })
+
+  it('schema_version is 2 after openDb', () => {
+    const db = openDb(join(tmpdir(), `mcpinv-test-${randomUUID()}.db`))
+    const v = (db.prepare('SELECT version FROM schema_version').get() as { version: number }).version
+    expect(v).toBe(2)
+    db.close()
+  })
+})
+
+describe('updateLastPort', () => {
+  it('sets last_port for known server', () => {
+    const db = openDb(join(tmpdir(), `mcpinv-test-${randomUUID()}.db`))
+    upsertKnownServer(db, 'srv-b')
+    updateLastPort(db, 'srv-b', 3042)
+    const known = listKnownServers(db)
+    expect(known.find(s => s.id === 'srv-b')?.last_port).toBe(3042)
+    db.close()
+  })
+
+  it('listKnownServers includes last_port', () => {
+    const db = openDb(join(tmpdir(), `mcpinv-test-${randomUUID()}.db`))
+    upsertKnownServer(db, 'srv-c')
+    const before = listKnownServers(db)
+    expect(before[0]).toHaveProperty('last_port')
     db.close()
   })
 })

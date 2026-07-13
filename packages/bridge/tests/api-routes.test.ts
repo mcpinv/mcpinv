@@ -346,6 +346,32 @@ describe('GET /api/servers — today_calls', () => {
   })
 })
 
+describe('POST /api/register — updates last_port', () => {
+  const paths: string[] = []
+  afterAll(() => paths.forEach(p => { try { unlinkSync(p) } catch { /* ignore */ } }))
+
+  it('stores the port in known_servers.last_port', async () => {
+    const p = join(tmpdir(), `mcpinv-test-${randomUUID()}.db`)
+    paths.push(p)
+    const db = openDb(p)
+    openDbs.push(db)
+    const registry = new ActiveRegistry()
+    const bus = new EventBus()
+    const a = Fastify()
+    await registerApiRoutes(a, db, bus, registry)
+    await a.ready()
+    const res = await a.inject({
+      method: 'POST', url: '/api/register',
+      headers: { 'content-type': 'application/json' },
+      payload: { server_id: 'port-test', port: 3007, pid: 999 }
+    })
+    expect(res.statusCode).toBe(200)
+    const row = db.prepare('SELECT last_port FROM known_servers WHERE id = ?').get('port-test') as { last_port: number }
+    expect(row.last_port).toBe(3007)
+    await a.close()
+  })
+})
+
 describe('POST /api/register with pid', () => {
   const paths: string[] = []
 
