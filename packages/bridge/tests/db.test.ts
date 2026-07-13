@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
+import Database from 'better-sqlite3'
 import { openDb, insertToolCall, upsertKnownServer, listKnownServers, updateLastPort, ToolCallRow } from '../src/db.js'
 import { unlinkSync, existsSync } from 'fs'
 import { join } from 'path'
@@ -80,8 +81,12 @@ describe('upsertKnownServer', () => {
 })
 
 describe('last_port migration', () => {
+  let dbPath: string
+  afterEach(() => { if (existsSync(dbPath)) unlinkSync(dbPath) })
+
   it('known_servers table has last_port column after openDb', () => {
-    const db = openDb(join(tmpdir(), `mcpinv-test-${randomUUID()}.db`))
+    dbPath = join(tmpdir(), `mcpinv-test-${randomUUID()}.db`)
+    const db = openDb(dbPath)
     upsertKnownServer(db, 'srv-a')
     const row = db.prepare('SELECT last_port FROM known_servers WHERE id = ?').get('srv-a') as any
     expect(row).toBeDefined()
@@ -90,16 +95,50 @@ describe('last_port migration', () => {
   })
 
   it('schema_version is 2 after openDb', () => {
-    const db = openDb(join(tmpdir(), `mcpinv-test-${randomUUID()}.db`))
+    dbPath = join(tmpdir(), `mcpinv-test-${randomUUID()}.db`)
+    const db = openDb(dbPath)
     const v = (db.prepare('SELECT version FROM schema_version').get() as { version: number }).version
     expect(v).toBe(2)
+    db.close()
+  })
+
+  it('migrates an existing v1 database to v2 (adds last_port column)', () => {
+    dbPath = join(tmpdir(), `mcpinv-v1-migrate-${randomUUID()}.db`)
+
+    // Create a v1 database manually (simulates existing user DB before upgrade)
+    const v1db = new Database(dbPath)
+    v1db.exec(`
+      CREATE TABLE known_servers (id TEXT PRIMARY KEY, registered_at INTEGER, last_seen_at INTEGER);
+      CREATE TABLE tool_calls (id INTEGER PRIMARY KEY AUTOINCREMENT, server_id TEXT NOT NULL, tool_name TEXT NOT NULL, ts INTEGER NOT NULL, duration_ms INTEGER, error TEXT);
+      CREATE TABLE schema_version (version INTEGER NOT NULL PRIMARY KEY);
+      INSERT INTO schema_version VALUES (1);
+    `)
+    v1db.prepare('INSERT INTO known_servers (id, registered_at) VALUES (?, ?)').run('existing-srv', Date.now())
+    v1db.close()
+
+    // Now open with the current openDb — should migrate cleanly
+    const db = openDb(dbPath)
+
+    // Verify last_port column exists
+    const row = db.prepare('SELECT last_port FROM known_servers WHERE id = ?').get('existing-srv') as any
+    expect(row).toBeDefined()
+    expect(row.last_port).toBeNull()
+
+    // Verify schema version bumped to 2
+    const version = (db.prepare('SELECT version FROM schema_version').get() as { version: number }).version
+    expect(version).toBe(2)
+
     db.close()
   })
 })
 
 describe('updateLastPort', () => {
+  let dbPath: string
+  afterEach(() => { if (existsSync(dbPath)) unlinkSync(dbPath) })
+
   it('sets last_port for known server', () => {
-    const db = openDb(join(tmpdir(), `mcpinv-test-${randomUUID()}.db`))
+    dbPath = join(tmpdir(), `mcpinv-test-${randomUUID()}.db`)
+    const db = openDb(dbPath)
     upsertKnownServer(db, 'srv-b')
     updateLastPort(db, 'srv-b', 3042)
     const known = listKnownServers(db)
@@ -108,7 +147,8 @@ describe('updateLastPort', () => {
   })
 
   it('listKnownServers includes last_port', () => {
-    const db = openDb(join(tmpdir(), `mcpinv-test-${randomUUID()}.db`))
+    dbPath = join(tmpdir(), `mcpinv-test-${randomUUID()}.db`)
+    const db = openDb(dbPath)
     upsertKnownServer(db, 'srv-c')
     const before = listKnownServers(db)
     expect(before[0]).toHaveProperty('last_port')
