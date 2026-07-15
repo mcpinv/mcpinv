@@ -11,7 +11,13 @@ const startTime = Date.now()
 function killProcess(pid: number): Promise<void> {
   return new Promise((resolve) => {
     if (platform() === 'win32') {
-      execFile('taskkill', ['/PID', String(pid), '/F'], () => resolve())
+      execFile('taskkill', ['/PID', String(pid), '/F'], (err) => {
+        if (err) {
+          // taskkill non-zero exit: process already gone or access denied — non-fatal
+          // err.message is logged but we resolve so the UI state can update
+        }
+        resolve()
+      })
     } else {
       try { process.kill(pid, 'SIGTERM') } catch { /* ESRCH — already gone */ }
       resolve()
@@ -68,8 +74,12 @@ export async function registerApiRoutes(
       return { ok: true }
     })
 
-    fastify.post<{ Body: { type: string; data: unknown } }>('/api/events/push', async (req) => {
-      eventBus.emit_event({ type: req.body.type, data: req.body.data } as CockpitEvent)
+    fastify.post<{ Body: { type: string; data: unknown } }>('/api/events/push', async (req, reply) => {
+      const { type, data } = req.body ?? {}
+      if (typeof type !== 'string' || !type) {
+        return reply.code(400).send({ error: 'invalid_body' })
+      }
+      eventBus.emit_event({ type, data } as CockpitEvent)
       return { ok: true }
     })
 

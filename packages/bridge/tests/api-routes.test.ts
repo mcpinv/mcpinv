@@ -410,6 +410,12 @@ describe('POST /api/events/push', () => {
     expect(received[0]).toMatchObject({ type: 'tool_call' })
   })
 
+  it('returns 400 when body is missing type', async () => {
+    const { app } = await buildHubApp()
+    const r = await app.inject({ method: 'POST', url: '/api/events/push', payload: {} })
+    expect(r.statusCode).toBe(400)
+  })
+
   it('returns 404 in legacy (non-registry) mode', async () => {
     const { app } = await buildApp()
     const r = await app.inject({
