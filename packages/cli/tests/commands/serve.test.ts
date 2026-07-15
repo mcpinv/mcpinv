@@ -83,4 +83,20 @@ describe('serveCommand', () => {
     expect(StdioBridge).toHaveBeenCalled()
     expect(BridgeServer).not.toHaveBeenCalled()
   })
+
+  it('does not call client.connect() before StdioBridge when --stdio is passed', async () => {
+    const { McpClient } = await import('@mcpinv/bridge')
+
+    const connectSpy = vi.fn().mockResolvedValue(undefined)
+    vi.mocked(McpClient).mockImplementationOnce(() => ({
+      connect: connectSpy,
+      listTools: vi.fn().mockResolvedValue([]),
+      close: vi.fn().mockResolvedValue(undefined)
+    }) as any)
+
+    await serveCommand().parseAsync(['my-server', '--stdio'], { from: 'user' })
+
+    // StdioBridge.start() is the sole caller of connect(); serve.ts must not call it
+    expect(connectSpy).toHaveBeenCalledTimes(0)
+  })
 })

@@ -40,14 +40,6 @@ export function serveCommand(): Command {
       const logPath = join(logDir, `bridge-${serverId}.log`)
 
       const client = new McpClient({ command: serverConfig.command, args: serverConfig.args, env })
-      try {
-        await client.connect()
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        console.error(chalk.red(`Failed to start MCP server "${serverId}": ${message}`))
-        console.error(chalk.dim(`  Try: mcpinv diagnose ${serverId}`))
-        process.exit(1)
-      }
 
       if (opts.stdio) {
         const bridge = new StdioBridge(client, {
@@ -69,6 +61,15 @@ export function serveCommand(): Command {
         process.on('SIGTERM', shutdown)
         process.stdin.on('close', shutdown)
         return
+      }
+
+      try {
+        await client.connect()
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        console.error(chalk.red(`Failed to start MCP server "${serverId}": ${message}`))
+        console.error(chalk.dim(`  Try: mcpinv diagnose ${serverId}`))
+        process.exit(1)
       }
 
       const server = new BridgeServer(client, { serverId, port: opts.port, host: opts.host, logPath, cockpitUrl: opts.cockpitUrl })
