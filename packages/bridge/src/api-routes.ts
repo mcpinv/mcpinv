@@ -55,6 +55,11 @@ export async function registerApiRoutes(
       return { ok: true }
     })
 
+    fastify.post<{ Body: { type: string; data: unknown } }>('/api/events/push', async (req) => {
+      eventBus.emit_event({ type: req.body.type, data: req.body.data } as CockpitEvent)
+      return { ok: true }
+    })
+
     fastify.post<{ Params: { id: string } }>('/api/servers/:id/start', async (req, reply) => {
       if (!cliBin) {
         return reply.code(501).send({ error: 'spawn_not_configured' })

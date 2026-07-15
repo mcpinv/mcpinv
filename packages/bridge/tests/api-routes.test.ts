@@ -21,6 +21,19 @@ afterAll(() => {
   for (const p of tempDbs) { if (existsSync(p)) unlinkSync(p) }
 })
 
+async function buildHubApp() {
+  const dbPath = join(tmpdir(), `mcpinv-hub-test-${randomUUID()}.db`)
+  tempDbs.push(dbPath)
+  const db = openDb(dbPath)
+  openDbs.push(db)
+  const bus = new EventBus()
+  const registry = new ActiveRegistry()
+  const app = Fastify()
+  await registerApiRoutes(app, db, bus, registry)
+  await app.ready()
+  return { app, db, bus, registry }
+}
+
 async function buildApp() {
   const dbPath = join(tmpdir(), `mcpinv-api-test-${randomUUID()}.db`)
   tempDbs.push(dbPath)
@@ -369,6 +382,35 @@ describe('POST /api/register — updates last_port', () => {
     const row = db.prepare('SELECT last_port FROM known_servers WHERE id = ?').get('port-test') as { last_port: number }
     expect(row.last_port).toBe(3007)
     await a.close()
+  })
+})
+
+describe('POST /api/events/push', () => {
+  it('emits the event on the event bus and returns ok', async () => {
+    const { app, bus } = await buildHubApp()
+    const received: unknown[] = []
+    bus.on_event(e => received.push(e))
+
+    const r = await app.inject({
+      method: 'POST',
+      url: '/api/events/push',
+      payload: { type: 'tool_call', data: { ts: 1, server_id: 'x', tool_name: 'y', duration_ms: 5, success: true } }
+    })
+
+    expect(r.statusCode).toBe(200)
+    expect(JSON.parse(r.body)).toEqual({ ok: true })
+    expect(received).toHaveLength(1)
+    expect(received[0]).toMatchObject({ type: 'tool_call' })
+  })
+
+  it('returns 404 in legacy (non-registry) mode', async () => {
+    const { app } = await buildApp()
+    const r = await app.inject({
+      method: 'POST',
+      url: '/api/events/push',
+      payload: { type: 'tool_call', data: {} }
+    })
+    expect(r.statusCode).toBe(404)
   })
 })
 
