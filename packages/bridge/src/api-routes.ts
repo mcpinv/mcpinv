@@ -3,8 +3,21 @@ import type Database from 'better-sqlite3'
 import type { EventBus, CockpitEvent } from './event-bus.js'
 import { listKnownServers, upsertKnownServer, updateLastPort } from './db.js'
 import { ActiveRegistry } from './registry.js'
+import { execFile } from 'child_process'
+import { platform } from 'os'
 
 const startTime = Date.now()
+
+function killProcess(pid: number): Promise<void> {
+  return new Promise((resolve) => {
+    if (platform() === 'win32') {
+      execFile('taskkill', ['/PID', String(pid), '/F'], () => resolve())
+    } else {
+      try { process.kill(pid, 'SIGTERM') } catch { /* ESRCH — already gone */ }
+      resolve()
+    }
+  })
+}
 
 export async function registerApiRoutes(
   fastify: FastifyInstance,
@@ -87,11 +100,7 @@ export async function registerApiRoutes(
       if (!entry?.pid) {
         return reply.code(404).send({ error: 'pid_unknown' })
       }
-      try {
-        process.kill(entry.pid, 'SIGTERM')
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== 'ESRCH') throw err
-      }
+      await killProcess(entry.pid)
       return { ok: true }
     })
   }

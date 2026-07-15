@@ -1,8 +1,15 @@
 import { describe, it, expect, afterAll, vi } from 'vitest'
 
 vi.mock('child_process', () => ({
-  spawn: vi.fn().mockReturnValue({ pid: 9999, unref: vi.fn() })
+  spawn: vi.fn().mockReturnValue({ pid: 9999, unref: vi.fn() }),
+  execFile: vi.fn()
 }))
+
+vi.mock('os', async () => {
+  const actual = await vi.importActual<typeof import('os')>('os')
+  return { ...actual, platform: vi.fn().mockReturnValue('linux') }
+})
+
 import Fastify from 'fastify'
 import { existsSync, unlinkSync } from 'fs'
 import { join } from 'path'
@@ -411,6 +418,35 @@ describe('POST /api/events/push', () => {
       payload: { type: 'tool_call', data: {} }
     })
     expect(r.statusCode).toBe(404)
+  })
+})
+
+describe('POST /api/servers/:id/stop — Windows kill', () => {
+  it('calls taskkill on win32 instead of SIGTERM', async () => {
+    const { app, registry } = await buildHubApp()
+    registry.register('kill-test', 3001, 1234)
+
+    // Patch platform to simulate win32
+    const { platform } = await import('os')
+    vi.mocked(platform).mockReturnValue('win32')
+
+    // Capture execFile calls
+    const { execFile } = await import('child_process')
+    const execFileSpy = vi.mocked(execFile)
+    execFileSpy.mockImplementation((_cmd: string, _args: any, cb: any) => {
+      cb(null, '', '')
+      return {} as any
+    })
+
+    const r = await app.inject({ method: 'POST', url: '/api/servers/kill-test/stop' })
+    expect(r.statusCode).toBe(200)
+    expect(execFileSpy).toHaveBeenCalledWith(
+      'taskkill',
+      ['/PID', '1234', '/F'],
+      expect.any(Function)
+    )
+
+    vi.mocked(platform).mockReturnValue('linux')
   })
 })
 
