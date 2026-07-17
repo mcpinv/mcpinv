@@ -3,4 +3,5 @@ dist/
 *.log
 .env
 .DS_Store
-docs/
+docs/*
+!docs/superpowers
