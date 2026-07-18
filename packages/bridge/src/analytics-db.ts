@@ -38,6 +38,7 @@ export function openAnalyticsDb(path = DEFAULT_PATH): Database.Database {
   mkdirSync(dirname(path), { recursive: true })
   const db = new Database(path)
   db.pragma('journal_mode = WAL')
+  db.pragma('foreign_keys = ON')
   db.exec(`
     CREATE TABLE IF NOT EXISTS sessions (
       id           TEXT PRIMARY KEY,
@@ -67,7 +68,6 @@ export function openAnalyticsDb(path = DEFAULT_PATH): Database.Database {
       success      INTEGER NOT NULL DEFAULT 1
     );
     CREATE INDEX IF NOT EXISTS idx_atc_roundtrip ON analytics_tool_calls(roundtrip_id);
-    PRAGMA foreign_keys = ON;
   `)
   return db
 }
@@ -106,7 +106,7 @@ export function insertAnalyticsToolCall(db: Database.Database, row: AnalyticsToo
 }
 
 export function getFileHash(db: Database.Database, sourcePath: string): string | null {
-  const row = db.prepare('SELECT file_hash FROM sessions WHERE source_path = ? LIMIT 1').get(sourcePath) as { file_hash: string } | undefined
+  const row = db.prepare('SELECT file_hash FROM sessions WHERE source_path = ? ORDER BY rowid DESC LIMIT 1').get(sourcePath) as { file_hash: string } | undefined
   return row?.file_hash ?? null
 }
 
@@ -123,6 +123,5 @@ export function listAnalyticsToolCalls(db: Database.Database, roundtripId: strin
 }
 
 export function deleteSession(db: Database.Database, sessionId: string): void {
-  db.pragma('foreign_keys = ON')
   db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId)
 }
