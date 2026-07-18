@@ -5,7 +5,7 @@ import {
   upsertSession, upsertRoundtrip, insertAnalyticsToolCall,
   getFileHash, deleteSession
 } from './analytics-db.js'
-import type { IngestResult } from './types.js'
+import type { IngestResult, SessionAdapter } from './types.js'
 
 export type { IngestResult }
 
@@ -21,7 +21,9 @@ interface RawLine {
   is_error?: boolean
 }
 
-export class ClaudeCodeAdapter {
+export class ClaudeCodeAdapter implements SessionAdapter {
+  readonly provider = 'claude-code'
+
   constructor(private readonly db: Database.Database) {}
 
   async ingest(filePath: string): Promise<IngestResult> {
