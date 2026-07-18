@@ -34,6 +34,13 @@ export interface CockpitServerOptions {
   cliBin?: string  // path to mcpinv CLI script; enables Cockpit-initiated bridge spawn
 }
 
+export interface IngestResult {
+  sessionId: string
+  roundtripsWritten: number
+  toolCallsWritten: number
+  skipped: boolean
+}
+
 export interface ErrorGuide {
   error_sig: string
   server_type: string
