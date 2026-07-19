@@ -4,10 +4,10 @@ import type { SessionRow, RoundtripRow } from '../../api/client.js'
 import type { Panel } from '../../registry.js'
 
 const SIGNIFICANCE_COLORS: Record<number, string> = {
-  0: 'var(--color-text-secondary, #555)',
-  1: '#4a9eff',
-  2: '#ff9800',
-  3: '#4caf50',
+  0: '#6b7280',
+  1: '#3b82f6',
+  2: '#f59e0b',
+  3: '#22c55e',
 }
 
 const SIGNIFICANCE_LABELS = ['Routine', 'Active', 'Relevant', 'Key moment']

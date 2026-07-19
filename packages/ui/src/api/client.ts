@@ -88,6 +88,6 @@ export const getRoundtrips      = (id: string) => get<RoundtripRow[]>(`/api/anal
 export const getCollectorStatus = () => get<{ enabled: boolean; watchedDirs: string[]; lastRunAt: number | null }>('/api/collector/status')
 export const getCollectorConfig = () => get<CollectorConfig>('/api/collector/config')
 export const putCollectorConfig = (config: Partial<CollectorConfig>): Promise<CollectorConfig> =>
-  fetch('/api/collector/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) }).then(r => r.json())
+  fetch(`${BASE}/api/collector/config`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) }).then(r => r.json())
 export const postCollectorIngest = (): Promise<{ ingested: number; skipped: number }> =>
-  fetch('/api/collector/ingest', { method: 'POST' }).then(r => r.json())
+  fetch(`${BASE}/api/collector/ingest`, { method: 'POST' }).then(r => r.json())
