@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom'
 import { panels } from '../registry.js'
+import { CollectorToggle } from './Shell.js'
 
 export function App() {
   return (
@@ -25,6 +26,9 @@ export function App() {
               {p.label}
             </NavLink>
           ))}
+          <div style={{ marginTop: 'auto', padding: '0 8px 8px', borderTop: '1px solid #1f2937', paddingTop: 12 }}>
+            <CollectorToggle />
+          </div>
         </nav>
         <main style={{ flex: 1, overflow: 'auto', padding: 24 }}>
           <Routes>

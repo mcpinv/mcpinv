@@ -67,3 +67,27 @@ export function subscribeEvents(onEvent: (e: unknown) => void): () => void {
   es.onmessage = e => onEvent(JSON.parse(e.data as string))
   return () => es.close()
 }
+
+export interface SessionRow {
+  id: string; provider: string; source_path: string; file_hash: string
+  started_at: number | null; ended_at: number | null
+}
+export interface RoundtripRow {
+  id: string; session_id: string; sequence_nr: number
+  human_tokens: number | null; assistant_tokens: number | null
+  tool_call_count: number; significance_score: number
+  started_at: number | null; duration_ms: number | null
+}
+export interface CollectorConfig {
+  enabled: boolean
+  dirs: Array<{ path: string; enabled: boolean; auto: boolean }>
+}
+
+export const getSessions        = () => get<SessionRow[]>('/api/analytics/sessions')
+export const getRoundtrips      = (id: string) => get<RoundtripRow[]>(`/api/analytics/sessions/${encodeURIComponent(id)}/roundtrips`)
+export const getCollectorStatus = () => get<{ enabled: boolean; watchedDirs: string[]; lastRunAt: number | null }>('/api/collector/status')
+export const getCollectorConfig = () => get<CollectorConfig>('/api/collector/config')
+export const putCollectorConfig = (config: Partial<CollectorConfig>): Promise<CollectorConfig> =>
+  fetch('/api/collector/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) }).then(r => r.json())
+export const postCollectorIngest = (): Promise<{ ingested: number; skipped: number }> =>
+  fetch('/api/collector/ingest', { method: 'POST' }).then(r => r.json())

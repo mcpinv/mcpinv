@@ -13,7 +13,8 @@ export interface Panel {
 import { panel as servers } from './panels/servers/index.js'
 import { panel as calls }   from './panels/calls/index.js'
 import { panel as tokens }  from './panels/tokens/index.js'
-import { panel as monitor } from './panels/monitor/index.js'
+import { panel as monitor }    from './panels/monitor/index.js'
+import { panel as analytics } from './panels/analytics/index.js'
 
-export const panels: Panel[] = [servers, calls, tokens, monitor]
+export const panels: Panel[] = [servers, calls, tokens, monitor, analytics]
   .sort((a, b) => (a.order ?? 100) - (b.order ?? 100))
