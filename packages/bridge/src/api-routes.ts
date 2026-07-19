@@ -5,6 +5,9 @@ import { listKnownServers, upsertKnownServer, updateLastPort } from './db.js'
 import { ActiveRegistry } from './registry.js'
 import { execFile } from 'child_process'
 import { platform } from 'os'
+import { openAnalyticsDb, listSessions, listRoundtrips, listAnalyticsToolCalls } from './analytics-db.js'
+import { SessionCollector, discoverDefaultDirs } from './session-collector.js'
+import type { CollectorConfig } from './session-collector.js'
 
 const startTime = Date.now()
 
@@ -30,7 +33,8 @@ export async function registerApiRoutes(
   db: Database.Database,
   eventBus: EventBus,
   registryOrServerId: ActiveRegistry | string,
-  cliBin?: string
+  cliBin?: string,
+  collector?: SessionCollector
 ): Promise<void> {
   const isRegistry = registryOrServerId instanceof ActiveRegistry
   const legacyServerId = isRegistry ? null : registryOrServerId
@@ -113,6 +117,47 @@ export async function registerApiRoutes(
       await killProcess(entry.pid)
       return { ok: true }
     })
+  }
+
+  if (registry) {
+    // --- Analytics DB (shared instance for route lifetime) ---
+    const analyticsDb = openAnalyticsDb()
+
+    // --- Analytics routes ---
+    fastify.get('/api/analytics/sessions', async () => listSessions(analyticsDb))
+
+    fastify.get<{ Params: { id: string } }>('/api/analytics/sessions/:id/roundtrips', async (req) =>
+      listRoundtrips(analyticsDb, req.params.id)
+    )
+
+    fastify.get<{ Params: { id: string } }>('/api/analytics/roundtrips/:id/tool-calls', async (req) =>
+      listAnalyticsToolCalls(analyticsDb, req.params.id)
+    )
+
+    // --- Collector status / config / trigger routes ---
+    fastify.get('/api/collector/status', async () =>
+      collector
+        ? collector.getStatus()
+        : { enabled: false, watchedDirs: [], lastRunAt: null }
+    )
+
+    fastify.get('/api/collector/config', async () =>
+      collector
+        ? collector.getConfig()
+        : ({ enabled: false, dirs: [] } as CollectorConfig)
+    )
+
+    fastify.put<{ Body: Partial<CollectorConfig> }>('/api/collector/config', async (req) => {
+      if (!collector) return { enabled: false, dirs: [] } as CollectorConfig
+      const current = collector.getConfig()
+      const next: CollectorConfig = { ...current, ...req.body }
+      collector.updateConfig(next)
+      return collector.getConfig()
+    })
+
+    fastify.post('/api/collector/ingest', async () =>
+      collector ? collector.ingestAll() : { ingested: 0, skipped: 0 }
+    )
   }
 
   // Cache static prepared statements once per route registration

@@ -6,11 +6,14 @@ import { ActiveRegistry } from './registry.js'
 import { registerApiRoutes } from './api-routes.js'
 import { reconnectKnownServers } from './reconnect.js'
 import type { CockpitServerOptions } from './types.js'
+import { openAnalyticsDb } from './analytics-db.js'
+import { SessionCollector, discoverDefaultDirs } from './session-collector.js'
 
 export class CockpitServer {
   private readonly fastify = Fastify({ logger: false })
   private started = false
   private readonly db: Database.Database
+  private collector: SessionCollector | undefined
   readonly eventBus: EventBus
   readonly registry: ActiveRegistry
 
@@ -22,6 +25,13 @@ export class CockpitServer {
 
   async start(): Promise<void> {
     if (this.started) return
+
+    const analyticsDb = openAnalyticsDb()
+    const defaultDirs = discoverDefaultDirs()
+    this.collector = new SessionCollector(analyticsDb, {
+      enabled: false,
+      dirs: defaultDirs.map(p => ({ path: p, enabled: true, auto: true }))
+    })
 
     try {
       const { default: fastifyStatic } = await import('@fastify/static')
@@ -36,7 +46,7 @@ export class CockpitServer {
       // public dir absent in development — UI runs on Vite :5173
     }
 
-    await registerApiRoutes(this.fastify, this.db, this.eventBus, this.registry, this.options.cliBin)
+    await registerApiRoutes(this.fastify, this.db, this.eventBus, this.registry, this.options.cliBin, this.collector)
     await this.fastify.listen({ port: this.options.port, host: this.options.host })
     this.started = true
     reconnectKnownServers(this.db, this.registry, this.eventBus).catch(() => {})
@@ -44,6 +54,7 @@ export class CockpitServer {
 
   async stop(): Promise<void> {
     if (this.started) {
+      this.collector?.stop()
       await this.fastify.close()
       this.started = false
     }
