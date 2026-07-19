@@ -22,6 +22,7 @@ const ROUNDTRIP_GAP_MS = 2000
 export function MonitorPanel() {
   const [roundtrips, setRoundtrips] = useState<LiveRoundtrip[]>([])
   const [selected, setSelected] = useState<string | null>(null)
+  const [liveMode, setLiveMode] = useState(true)
   const lastTsRef = useRef<number>(0)
 
   useEffect(() => {
@@ -30,9 +31,11 @@ export function MonitorPanel() {
       if (e.type !== 'tool_call' || !e.data) return
       const now = Date.now()
 
+      // Fix 1: ref mutation BEFORE setRoundtrips to avoid StrictMode double-invoke corruption
+      const gap = now - lastTsRef.current
+      lastTsRef.current = now
+
       setRoundtrips(prev => {
-        const gap = now - lastTsRef.current
-        lastTsRef.current = now
         const last = prev[prev.length - 1]
 
         if (!last || !last.active || gap > ROUNDTRIP_GAP_MS) {
@@ -43,6 +46,10 @@ export function MonitorPanel() {
             active: true,
           }
           const updated = prev.map(r => ({ ...r, active: false }))
+          // Fix 2: auto-select newest roundtrip when in live mode
+          if (liveMode) {
+            setSelected(newRt.id)
+          }
           return [...updated, newRt]
         }
 
@@ -53,12 +60,13 @@ export function MonitorPanel() {
         )
       })
     })
-  }, [])
+  }, [liveMode])
 
   const displayRoundtrips = [...roundtrips].reverse()
+  const newestRt = roundtrips[roundtrips.length - 1]
   const selectedRt = selected
     ? roundtrips.find(r => r.id === selected)
-    : roundtrips[roundtrips.length - 1]
+    : newestRt
 
   if (roundtrips.length === 0) {
     return (
@@ -72,10 +80,19 @@ export function MonitorPanel() {
     <div style={{ display: 'flex', gap: '1rem', height: '100%' }}>
       {/* Left column: roundtrip list, newest first */}
       <div style={{ width: '240px', overflowY: 'auto', borderRight: '1px solid var(--color-border, #333)' }}>
+        {/* Fix 2: "Back to Live" button shown when user has pinned a specific row */}
+        {!liveMode && (
+          <button
+            onClick={() => { setLiveMode(true); setSelected(null) }}
+            style={{ fontSize: 11, margin: '6px 8px', padding: '2px 8px', cursor: 'pointer' }}
+          >
+            ↩ Back to Live
+          </button>
+        )}
         {displayRoundtrips.map(rt => (
           <div
             key={rt.id}
-            onClick={() => setSelected(rt.id)}
+            onClick={() => { setSelected(rt.id); setLiveMode(false) }}
             style={{
               padding: '0.5rem 1rem',
               cursor: 'pointer',
@@ -86,7 +103,7 @@ export function MonitorPanel() {
             }}
           >
             <span>{rt.toolCalls.length} call{rt.toolCalls.length !== 1 ? 's' : ''}</span>
-            {rt.active && selectedRt?.id === rt.id && (
+            {rt.active && liveMode && rt.id === newestRt?.id && (
               <span style={{ fontSize: '0.7rem', color: 'var(--color-accent, #4a9eff)' }}>● LIVE</span>
             )}
           </div>
