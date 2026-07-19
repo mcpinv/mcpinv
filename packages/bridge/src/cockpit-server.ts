@@ -13,6 +13,7 @@ export class CockpitServer {
   private readonly fastify = Fastify({ logger: false })
   private started = false
   private readonly db: Database.Database
+  private analyticsDb: Database.Database | undefined
   private collector: SessionCollector | undefined
   readonly eventBus: EventBus
   readonly registry: ActiveRegistry
@@ -26,7 +27,8 @@ export class CockpitServer {
   async start(): Promise<void> {
     if (this.started) return
 
-    const analyticsDb = openAnalyticsDb()
+    this.analyticsDb = openAnalyticsDb()
+    const analyticsDb = this.analyticsDb
     const defaultDirs = discoverDefaultDirs()
     this.collector = new SessionCollector(analyticsDb, {
       enabled: false,
@@ -55,6 +57,7 @@ export class CockpitServer {
   async stop(): Promise<void> {
     if (this.started) {
       this.collector?.stop()
+      this.analyticsDb?.close()
       await this.fastify.close()
       this.started = false
     }

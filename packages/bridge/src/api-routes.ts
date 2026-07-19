@@ -4,7 +4,8 @@ import type { EventBus, CockpitEvent } from './event-bus.js'
 import { listKnownServers, upsertKnownServer, updateLastPort } from './db.js'
 import { ActiveRegistry } from './registry.js'
 import { execFile } from 'child_process'
-import { platform } from 'os'
+import { platform, homedir } from 'os'
+import { resolve } from 'path'
 import { listSessions, listRoundtrips, listAnalyticsToolCalls } from './analytics-db.js'
 import { SessionCollector, discoverDefaultDirs } from './session-collector.js'
 import type { CollectorConfig } from './session-collector.js'
@@ -147,8 +148,13 @@ export async function registerApiRoutes(
 
     fastify.put<{ Body: Partial<CollectorConfig> }>('/api/collector/config', async (req) => {
       if (!collector) return { enabled: false, dirs: [] } as CollectorConfig
+      const home = homedir()
+      const body = req.body
+      const safeDirs = (body.dirs ?? []).filter(
+        (d) => resolve(d.path).startsWith(home)
+      )
       const current = collector.getConfig()
-      const next: CollectorConfig = { ...current, ...req.body }
+      const next: CollectorConfig = { ...current, ...body, dirs: safeDirs }
       collector.updateConfig(next)
       return collector.getConfig()
     })

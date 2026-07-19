@@ -87,7 +87,17 @@ export const getSessions        = () => get<SessionRow[]>('/api/analytics/sessio
 export const getRoundtrips      = (id: string) => get<RoundtripRow[]>(`/api/analytics/sessions/${encodeURIComponent(id)}/roundtrips`)
 export const getCollectorStatus = () => get<{ enabled: boolean; watchedDirs: string[]; lastRunAt: number | null }>('/api/collector/status')
 export const getCollectorConfig = () => get<CollectorConfig>('/api/collector/config')
-export const putCollectorConfig = (config: Partial<CollectorConfig>): Promise<CollectorConfig> =>
-  fetch(`${BASE}/api/collector/config`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) }).then(r => r.json())
-export const postCollectorIngest = (): Promise<{ ingested: number; skipped: number }> =>
-  fetch(`${BASE}/api/collector/ingest`, { method: 'POST' }).then(r => r.json())
+export async function putCollectorConfig(config: Partial<CollectorConfig>): Promise<CollectorConfig> {
+  const r = await fetch(`${BASE}/api/collector/config`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config)
+  })
+  if (!r.ok) throw new Error(`/api/collector/config: ${r.status}`)
+  return r.json() as Promise<CollectorConfig>
+}
+export async function postCollectorIngest(): Promise<{ ingested: number; skipped: number }> {
+  const r = await fetch(`${BASE}/api/collector/ingest`, { method: 'POST' })
+  if (!r.ok) throw new Error(`/api/collector/ingest: ${r.status}`)
+  return r.json() as Promise<{ ingested: number; skipped: number }>
+}

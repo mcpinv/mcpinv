@@ -31,7 +31,7 @@ export interface AnalyticsToolCallRow {
   roundtrip_id: string
   tool_name: string
   duration_ms: number | null
-  success: number
+  success: number | null
 }
 
 export function openAnalyticsDb(path = DEFAULT_PATH): Database.Database {
@@ -65,7 +65,7 @@ export function openAnalyticsDb(path = DEFAULT_PATH): Database.Database {
       roundtrip_id TEXT NOT NULL REFERENCES roundtrips(id) ON DELETE CASCADE,
       tool_name    TEXT NOT NULL,
       duration_ms  INTEGER,
-      success      INTEGER NOT NULL DEFAULT 1
+      success      INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_atc_roundtrip ON analytics_tool_calls(roundtrip_id);
   `)

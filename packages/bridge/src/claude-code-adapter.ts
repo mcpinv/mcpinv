@@ -131,7 +131,7 @@ export class ClaudeCodeAdapter implements SessionAdapter {
           roundtrip_id: roundtripId,
           tool_name: toolUse.name ?? 'unknown',
           duration_ms: toolResult?.duration_ms ?? null,
-          success: toolResult?.is_error ? 0 : 1
+          success: toolResult == null ? null : toolResult.is_error ? 0 : 1
         })
         toolCallsWritten++
       }
