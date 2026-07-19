@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { panels } from '../registry.js'
 
 describe('panel registry', () => {
-  it('has 3 panels', () => {
-    expect(panels).toHaveLength(3)
+  it('has 4 panels', () => {
+    expect(panels).toHaveLength(4)
   })
 
   it('each panel has required fields', () => {
