@@ -101,7 +101,7 @@ export class SessionCollector {
   }
 
   getConfig(): CollectorConfig {
-    return this.config
+    return { ...this.config }
   }
 
   getStatus(): { enabled: boolean; watchedDirs: string[]; lastRunAt: number | null } {

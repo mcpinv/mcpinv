@@ -5,7 +5,7 @@ import { listKnownServers, upsertKnownServer, updateLastPort } from './db.js'
 import { ActiveRegistry } from './registry.js'
 import { execFile } from 'child_process'
 import { platform } from 'os'
-import { openAnalyticsDb, listSessions, listRoundtrips, listAnalyticsToolCalls } from './analytics-db.js'
+import { listSessions, listRoundtrips, listAnalyticsToolCalls } from './analytics-db.js'
 import { SessionCollector, discoverDefaultDirs } from './session-collector.js'
 import type { CollectorConfig } from './session-collector.js'
 
@@ -34,7 +34,8 @@ export async function registerApiRoutes(
   eventBus: EventBus,
   registryOrServerId: ActiveRegistry | string,
   cliBin?: string,
-  collector?: SessionCollector
+  collector?: SessionCollector,
+  analyticsDb?: Database.Database
 ): Promise<void> {
   const isRegistry = registryOrServerId instanceof ActiveRegistry
   const legacyServerId = isRegistry ? null : registryOrServerId
@@ -119,10 +120,7 @@ export async function registerApiRoutes(
     })
   }
 
-  if (registry) {
-    // --- Analytics DB (shared instance for route lifetime) ---
-    const analyticsDb = openAnalyticsDb()
-
+  if (registry && analyticsDb) {
     // --- Analytics routes ---
     fastify.get('/api/analytics/sessions', async () => listSessions(analyticsDb))
 
