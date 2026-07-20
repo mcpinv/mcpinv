@@ -13,9 +13,12 @@ const WRITE_TOOL_RE = /\b(write|edit|create|delete|bash|execute|git)\b/i
 
 interface RawLine {
   type: string
-  message?: { content?: string }
+  message?: {
+    content?: unknown
+    usage?: { input_tokens?: number; output_tokens?: number }
+  }
   timestamp?: string
-  usage?: { input_tokens?: number; output_tokens?: number }
+  requestId?: string
   name?: string
   duration_ms?: number
   is_error?: boolean
@@ -78,13 +81,22 @@ export class ClaudeCodeAdapter implements SessionAdapter {
 
     // First pass: collect raw roundtrip data for significance scoring
     const rawRoundtrips = groups.map((group, i) => {
-      const userLine = group[0]
-      const humanTokens = userLine.usage?.input_tokens ?? null
-      const assistantLine = group.find(l => l.type === 'assistant')
-      const assistantTokens = assistantLine?.usage?.output_tokens ?? null
+      // Deduplicate assistant lines by requestId (thinking + text entries share the same requestId)
+      const seenRequestIds = new Set<string>()
+      const uniqueAssistantLines = group.filter(l => {
+        if (l.type !== 'assistant') return false
+        if (!l.requestId) return true
+        if (seenRequestIds.has(l.requestId)) return false
+        seenRequestIds.add(l.requestId)
+        return true
+      })
+      // Tokens live at entry.message.usage, not entry.usage
+      const assistantLine = uniqueAssistantLines[uniqueAssistantLines.length - 1]
+      const humanTokens = assistantLine?.message?.usage?.input_tokens ?? null
+      const assistantTokens = assistantLine?.message?.usage?.output_tokens ?? null
       const toolUses = group.filter(l => l.type === 'tool_use')
       const toolResults = group.filter(l => l.type === 'tool_result')
-      const startTs = userLine.timestamp ? new Date(userLine.timestamp).getTime() : null
+      const startTs = group[0].timestamp ? new Date(group[0].timestamp).getTime() : null
       const lastLineTs = group[group.length - 1].timestamp
         ? new Date(group[group.length - 1].timestamp!).getTime()
         : null
