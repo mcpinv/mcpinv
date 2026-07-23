@@ -44,22 +44,38 @@ export class ClaudeCodeAdapter implements SessionAdapter {
       .map(l => { try { return JSON.parse(l) } catch { return null } })
       .filter(Boolean)
 
-    // Group lines into roundtrips: each group starts with a 'user' entry
+    // Group lines into roundtrips: each group starts with a real user message.
+    // Excluded from group-start:
+    //   - toolUseResult entries: Claude Code's record of tool output fed back into context
+    //   - isMeta entries: compaction summaries / system context injections
     const groups: RawLine[][] = []
     for (const line of lines) {
-      if (line.type === 'user') {
+      const isRealUserMessage = line.type === 'user'
+        && !('toolUseResult' in line)
+        && !('isMeta' in line)
+      if (isRealUserMessage) {
         groups.push([line])
       } else if (groups.length > 0) {
         groups[groups.length - 1].push(line)
       }
     }
 
-    if (groups.length === 0) {
+    // Drop groups where no assistant reply was recorded (interrupted turns),
+    // and groups where the assistant response has 0 output tokens (context-management
+    // compaction events — identified by message.usage.output_tokens === 0).
+    const completedGroups = groups.filter(g => {
+      const assistantLines = g.filter(l => l.type === 'assistant')
+      if (assistantLines.length === 0) return false
+      const lastAsst = assistantLines[assistantLines.length - 1]
+      return (lastAsst.message?.usage?.output_tokens ?? 0) > 0
+    })
+
+    if (completedGroups.length === 0) {
       return { sessionId: '', roundtripsWritten: 0, toolCallsWritten: 0, skipped: false }
     }
 
-    const firstTs = groups[0][0].timestamp ? new Date(groups[0][0].timestamp).getTime() : null
-    const lastGroup = groups[groups.length - 1]
+    const firstTs = completedGroups[0][0].timestamp ? new Date(completedGroups[0][0].timestamp).getTime() : null
+    const lastGroup = completedGroups[completedGroups.length - 1]
     const lastLine = lastGroup[lastGroup.length - 1]
     const lastTs = lastLine.timestamp ? new Date(lastLine.timestamp).getTime() : null
 
@@ -80,7 +96,7 @@ export class ClaudeCodeAdapter implements SessionAdapter {
     })
 
     // First pass: collect raw roundtrip data for significance scoring
-    const rawRoundtrips = groups.map((group, i) => {
+    const rawRoundtrips = completedGroups.map((group, i) => {
       // Deduplicate assistant lines by requestId (thinking + text entries share the same requestId)
       const seenRequestIds = new Set<string>()
       const uniqueAssistantLines = group.filter(l => {
@@ -149,6 +165,6 @@ export class ClaudeCodeAdapter implements SessionAdapter {
       }
     }
 
-    return { sessionId, roundtripsWritten: groups.length, toolCallsWritten, skipped: false }
+    return { sessionId, roundtripsWritten: completedGroups.length, toolCallsWritten, skipped: false }
   }
 }
